@@ -147,18 +147,15 @@ st.markdown('''
 # ------------------------------------------------------------------------------
 api_key = ""
 
-# 1. Tenta carregar dos Secrets do Streamlit Cloud (sem travar se não existir)
 try:
     if "GROQ_API_KEY" in st.secrets:
         api_key = st.secrets["GROQ_API_KEY"]
 except Exception:
     pass
 
-# 2. Tenta carregar de variável de ambiente
 if not api_key:
     api_key = os.environ.get("GROQ_API_KEY", "")
 
-# 3. Configurações na Barra Lateral
 st.sidebar.markdown("### ⚙️ MOTOR IA (GROQ)")
 
 if not api_key:
@@ -171,20 +168,32 @@ else:
 modelo_selecionado = st.sidebar.selectbox(
     "Modelo em Execução:", 
     [
-        "llama-3.1-8b-instant",
-        "llama3-8b-8192",
-        "llama3-70b-8192"
+        "meta-llama/llama-3.1-8b-instant",
+        "meta-llama/llama-3.3-70b-versatile"
     ]
 )
-# Dicionários de opções para o formulário
-OPCOES_ICC = ["Não informado", "10 kA", "15 kA", "20 kA", "25 kA", "30 kA", "45 kA", "65 kA"]
+
+# ------------------------------------------------------------------------------
+# OPÇÕES TÉCNICAS COMPLETAS PARA O FORMULÁRIO
+# ------------------------------------------------------------------------------
+OPCOES_TENSAO = ["Não informado", "220V", "380V", "440V", "480V"]
+OPCOES_ICC = ["Não informado", "10 kA", "15 kA", "20 kA", "25 kA", "30 kA", "45 kA", "65 kA", "85 kA"]
+OPCOES_IP = ["Não informado", "IP31", "IP40", "IP42", "IP54", "IP55", "IP65"]
+OPCOES_FORMA = ["Não informado", "Forma 1", "Forma 2a", "Forma 2b", "Forma 3a", "Forma 3b", "Forma 4a", "Forma 4b"]
 OPCOES_DPS = ["Não informado", "Classe I", "Classe II", "Classe I + II", "Classe III", "Não terá"]
+OPCOES_CORRENTE_BUS = ["Não informado", "400 A", "630 A", "800 A", "1000 A", "1250 A", "1600 A", "2000 A", "2500 A", "3150 A", "4000 A"]
+OPCOES_MATERIAL_BUS = ["Não informado", "Cobre Eletrolítico", "Alumínio"]
 OPCOES_TEMP = ["Não informado", "20 °C", "25 °C", "30 °C", "35 °C", "40 °C", "45 °C"]
 OPCOES_ACESSOCABOS = ["Não informado", "Por Baixo (Inferior)", "Por Cima (Superior)", "Mista (Entrada Cima / Saída Baixo)", "Mista (Entrada Baixo / Saída Cima)"]
+OPCOES_COR = ["Não informado", "RAL 7032", "RAL 7035", "Munsell N6.5"]
 
-# Inicializar estados de sessão
+CAMPOS_CHAVE = [
+    "tensao", "icc", "ip", "forma", "dps", 
+    "corrente_bus", "material_bus", "temp", "acessocabos", "cor"
+]
+
 def inicializar_campos():
-    for key in ["icc", "dps", "temp", "acessocabos"]:
+    for key in CAMPOS_CHAVE:
         if key not in st.session_state:
             st.session_state[key] = "Não informado"
 
@@ -216,34 +225,46 @@ if arquivo_anexado is not None:
         elif arquivo_anexado.name.endswith(".txt"):
             texto_arquivo = arquivo_anexado.read().decode("utf-8")
             
-        st.success(f"✓ Arquivo '{arquivo_anexado.name}' carregado!")
+        st.success(f"✓ Arquivo '{arquivo_anexado.name}' carregado com sucesso!")
         
-        # BOTÃO PARA EXTRAÇÃO E PREENCHIMENTO AUTOMÁTICO
-        if st.button("🤖 ANALISAR DOCUMENTAÇÃO E PREENCHER CAMPOS AUTOMATICAMENTE"):
+        # BOTÃO PARA EXTRAÇÃO COMPLETA
+        if st.button("🤖 ANALISAR DOCUMENTAÇÃO COMPLETA E AUTO-PREENCHER"):
             if not api_key:
                 st.error("Insira uma chave válida da Groq na barra lateral ou nos Secrets!")
             else:
-                with st.spinner("IA analisando a documentação e identificando os parâmetros técnicos..."):
+                with st.spinner("IA executando varredura técnica completa no edital..."):
                     prompt_analise = f"""
-                    Você é um engenheiro eletricista especialista em painéis elétricos.
-                    Analise o texto fornecido do edital/especificação técnica e extraia as informações pedidas.
+                    Você é um engenheiro eletricista analista de especificações técnicas para painéis elétricos.
+                    Examine o documento fornecido e extraia exatamente as propriedades solicitadas.
                     
-                    Você deve mapear cada campo exatamente para uma das opções válidas listadas abaixo:
-                    - icc: ["10 kA", "15 kA", "20 kA", "25 kA", "30 kA", "45 kA", "65 kA", "Não informado"]
-                    - dps: ["Classe I", "Classe II", "Classe I + II", "Classe III", "Não terá", "Não informado"]
-                    - temp: ["20 °C", "25 °C", "30 °C", "35 °C", "40 °C", "45 °C", "Não informado"]
-                    - acessocabos: ["Por Baixo (Inferior)", "Por Cima (Superior)", "Mista (Entrada Cima / Saída Baixo)", "Mista (Entrada Baixo / Saída Cima)", "Não informado"]
+                    Você DEVE mapear cada campo exclusivamente para um dos valores válidos abaixo:
+                    - tensao: {OPCOES_TENSAO}
+                    - icc: {OPCOES_ICC}
+                    - ip: {OPCOES_IP}
+                    - forma: {OPCOES_FORMA}
+                    - dps: {OPCOES_DPS}
+                    - corrente_bus: {OPCOES_CORRENTE_BUS}
+                    - material_bus: {OPCOES_MATERIAL_BUS}
+                    - temp: {OPCOES_TEMP}
+                    - acessocabos: {OPCOES_ACESSOCABOS}
+                    - cor: {OPCOES_COR}
 
-                    Retorne EXCLUSIVAMENTE um objeto JSON válido no formato:
+                    Retorne EXCLUSIVAMENTE um JSON sem formatação adicional:
                     {{
-                        "icc": "valor_escolhido",
-                        "dps": "valor_escolhido",
-                        "temp": "valor_escolhido",
-                        "acessocabos": "valor_escolhido"
+                        "tensao": "valor",
+                        "icc": "valor",
+                        "ip": "valor",
+                        "forma": "valor",
+                        "dps": "valor",
+                        "corrente_bus": "valor",
+                        "material_bus": "valor",
+                        "temp": "valor",
+                        "acessocabos": "valor",
+                        "cor": "valor"
                     }}
 
                     TEXTO DO DOCUMENTO:
-                    {texto_arquivo[:6000]}
+                    {texto_arquivo[:8000]}
                     """
                     try:
                         res = requests.post(
@@ -255,58 +276,73 @@ if arquivo_anexado is not None:
                                 "temperature": 0.0,
                                 "response_format": {"type": "json_object"}
                             },
-                            timeout=20
+                            timeout=25
                         )
                         if res.status_code == 200:
                             dados = json.loads(res.json()["choices"][0]["message"]["content"])
-                            if dados.get("icc") in OPCOES_ICC: st.session_state["icc"] = dados["icc"]
-                            if dados.get("dps") in OPCOES_DPS: st.session_state["dps"] = dados["dps"]
-                            if dados.get("temp") in OPCOES_TEMP: st.session_state["temp"] = dados["temp"]
-                            if dados.get("acessocabos") in OPCOES_ACESSOCABOS: st.session_state["acessocabos"] = dados["acessocabos"]
                             
-                            st.success("✨ Campos do formulário atualizados com sucesso com base na documentação!")
+                            mapeamento = {
+                                "tensao": OPCOES_TENSAO,
+                                "icc": OPCOES_ICC,
+                                "ip": OPCOES_IP,
+                                "forma": OPCOES_FORMA,
+                                "dps": OPCOES_DPS,
+                                "corrente_bus": OPCOES_CORRENTE_BUS,
+                                "material_bus": OPCOES_MATERIAL_BUS,
+                                "temp": OPCOES_TEMP,
+                                "acessocabos": OPCOES_ACESSOCABOS,
+                                "cor": OPCOES_COR
+                            }
+                            
+                            for campo, lista_opcoes in mapeamento.items():
+                                if dados.get(campo) in lista_opcoes:
+                                    st.session_state[campo] = dados[campo]
+                            
+                            st.success("✨ Auditoria concluída! Formulário preenchido automaticamente.")
                             st.rerun()
                         else:
                             st.error(f"Erro na API Groq ({res.status_code}): {res.text}")
                     except Exception as e:
-                        st.error(f"Erro ao conectar com o serviço de IA: {e}")
+                        st.error(f"Erro ao conectar com a IA: {e}")
 
     except Exception as e:
-        st.error(f"Erro ao processar o arquivo anexado: {e}")
+        st.error(f"Erro ao ler arquivo: {e}")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# Layout Principal
-col_form, col_summary = st.columns([1.25, 0.75], gap="large")
+# Layout Principal em Duas Colunas
+col_form, col_summary = st.columns([1.3, 0.7], gap="large")
 
 with col_form:
     st.markdown('''
     <div class="card-box">
-        <div class="card-header">📐 1. Parâmetros Construtivos & Elétricos Gerais</div>
+        <div class="card-header">📐 1. Parâmetros Elétricos & Operacionais</div>
     ''', unsafe_allow_html=True)
     
-    opcoes_altura = ["Não informado", "2.000 mm (Padrão)", "1.200 mm a 1.600 mm", "1.600 mm a 2.000 mm", "2.000 mm a 2.300 mm"]
-    opcoes_profundidade = ["Não informado", "600 mm (Padrão)", "400 mm a 600 mm", "600 mm a 800 mm", "800 mm a 1.000 mm"]
-
     c1, c2 = st.columns(2)
     with c1:
+        tensao = st.selectbox("Tensão Nominal:", OPCOES_TENSAO, index=OPCOES_TENSAO.index(st.session_state["tensao"]))
         icc = st.selectbox("Corrente Curto (Icc):", OPCOES_ICC, index=OPCOES_ICC.index(st.session_state["icc"]))
+        corrente_bus = st.selectbox("Corrente Barramento:", OPCOES_CORRENTE_BUS, index=OPCOES_CORRENTE_BUS.index(st.session_state["corrente_bus"]))
+        material_bus = st.selectbox("Material Barramento:", OPCOES_MATERIAL_BUS, index=OPCOES_MATERIAL_BUS.index(st.session_state["material_bus"]))
         dps_classe = st.selectbox("Classe DPS:", OPCOES_DPS, index=OPCOES_DPS.index(st.session_state["dps"]))
-        temp_ambiente = st.selectbox("Temp. Ambiente Máxima:", OPCOES_TEMP, index=OPCOES_TEMP.index(st.session_state["temp"]))
+
     with c2:
-        entrada_saida_cabos = st.selectbox("Acesso Cabos:", OPCOES_ACESSOCABOS, index=OPCOES_ACESSOCABOS.index(st.session_state["acessocabos"]))
-        altura_limite = st.selectbox("Limite Altura:", opcoes_altura)
-        profundidade_limite = st.selectbox("Limite Profundidade:", opcoes_profundidade)
-    
+        ip_grau = st.selectbox("Grau de Proteção (IP):", OPCOES_IP, index=OPCOES_IP.index(st.session_state["ip"]))
+        forma_seg = st.selectbox("Forma de Segregação:", OPCOES_FORMA, index=OPCOES_FORMA.index(st.session_state["forma"]))
+        temp_ambiente = st.selectbox("Temp. Ambiente Máx:", OPCOES_TEMP, index=OPCOES_TEMP.index(st.session_state["temp"]))
+        entrada_saida_cabos = st.selectbox("Acesso dos Cabos:", OPCOES_ACESSOCABOS, index=OPCOES_ACESSOCABOS.index(st.session_state["acessocabos"]))
+        cor_pintura = st.selectbox("Pintura / Cor:", OPCOES_COR, index=OPCOES_COR.index(st.session_state["cor"]))
+        
     st.markdown('</div>', unsafe_allow_html=True)
 
-# Coluna Lateral: Resumo das Pendências / RFI
+# Coluna de Consolidação e Geração do RFI
 with col_summary:
     st.markdown(f'''
     <div style="position: sticky; top: 20px;">
         <div style="background: #111827; border: 1px solid #1F2937; border-radius: 10px; padding: 20px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                <span style="font-size: 0.9rem; font-weight: 700; color: #F3F4F6;">PAINEL DE CONSOLIDAÇÃO</span>
+                <span style="font-size: 0.9rem; font-weight: 700; color: #F3F4F6;">PAINEL DE AUDITORIA DE RFI</span>
                 <span style="background: #0284C7; color: #FFF; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 600;">{tipo_painel.split(' ')[0]}</span>
             </div>
     ''', unsafe_allow_html=True)
@@ -316,16 +352,22 @@ with col_summary:
     if btn_processar:
         pendencias = []
 
-        if icc == "Não informado": pendencias.append("Qual é a corrente de curto-circuito (Icc em kA) no ponto de instalação?")
-        if dps_classe == "Não informado": pendencias.append("Qual é a classe de proteção do DPS exigida?")
-        if temp_ambiente == "Não informado": pendencias.append("Qual é a temperatura ambiente máxima no local?")
-        if entrada_saida_cabos == "Não informado": pendencias.append("Qual a direção de entrada e saída dos cabos (superior ou inferior)?")
+        if tensao == "Não informado": pendencias.append("Qual a tensão de operação nominal do painel (V)?")
+        if icc == "Não informado": pendencias.append("Qual a corrente suportável de curto-circuito (Icc em kA)?")
+        if corrente_bus == "Não informado": pendencias.append("Qual a corrente nominal do barramento principal (A)?")
+        if material_bus == "Não informado": pendencias.append("Qual o material do barramento (Cobre Eletrolítico ou Alumínio)?")
+        if ip_grau == "Não informado": pendencias.append("Qual o grau de proteção IP exigido do invólucro?")
+        if forma_seg == "Não informado": pendencias.append("Qual a forma construtiva de segregação interna (IEC 61439)?")
+        if dps_classe == "Não informado": pendencias.append("Qual a classe dos Supressores de Surto (DPS)?")
+        if temp_ambiente == "Não informado": pendencias.append("Qual a temperatura ambiente máxima do ambiente de instalação?")
+        if entrada_saida_cabos == "Não informado": pendencias.append("Qual o sentido de entrada e saída dos cabos de força e comando?")
+        if cor_pintura == "Não informado": pendencias.append("Qual a especificação da cor do acabamento da pintura?")
 
         st.markdown("<br>", unsafe_allow_html=True)
         if pendencias:
             st.markdown(f'''
             <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid #F59E0B; padding: 10px 14px; border-radius: 6px; font-size: 0.8rem; color: #FBBF24; font-family: 'JetBrains Mono', monospace; margin-bottom: 12px;">
-                ⚠️ {len(pendencias)} PENDÊNCIA(S) DETECTADA(S)
+                ⚠️ {len(pendencias)} DUVIDA(S) TÉCNICA(S) DETECTADA(S)
             </div>
             ''', unsafe_allow_html=True)
 
@@ -334,7 +376,7 @@ with col_summary:
         else:
             st.markdown('''
             <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10B981; padding: 12px; border-radius: 6px; font-size: 0.85rem; color: #34D399; text-align: center;">
-                ✓ NENHUMA PENDÊNCIA ENCONTRADA! TODOS OS DADOS FORAM PREENCHIDOS.
+                ✓ NENHUMA PENDÊNCIA TÉCNICA! O PAINEL ESTÁ TOTALMENTE ESPECIFICADO.
             </div>
             ''', unsafe_allow_html=True)
 
