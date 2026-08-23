@@ -1,8 +1,18 @@
 import streamlit as st
 import requests
+import re
 import json
-import os
-import pypdf
+
+# Importações condicionais para extração de anexos
+try:
+    import pypdf
+except ImportError:
+    pypdf = None
+
+try:
+    import docx
+except ImportError:
+    docx = None
 
 # Configuração da página
 st.set_page_config(
@@ -72,6 +82,10 @@ st.markdown('''
         border-radius: 10px;
         padding: 20px;
         margin-bottom: 16px;
+        transition: border-color 0.2s ease;
+    }
+    .card-box:hover {
+        border-color: #374151;
     }
 
     .card-header {
@@ -95,6 +109,22 @@ st.markdown('''
         border-radius: 6px !important;
         font-size: 0.9rem !important;
     }
+    div[data-baseweb="select"] > div:hover {
+        border-color: #06B6D4 !important;
+    }
+    
+    .stTextArea textarea {
+        background-color: #1F2937 !important;
+        border: 1px solid #374151 !important;
+        color: #F3F4F6 !important;
+        border-radius: 6px !important;
+        font-family: 'JetBrains Mono', monospace !important;
+        font-size: 0.85rem !important;
+    }
+    .stTextArea textarea:focus {
+        border-color: #06B6D4 !important;
+        box-shadow: 0 0 0 1px #06B6D4 !important;
+    }
 
     div.stButton > button:first-child {
         background: linear-gradient(135deg, #0284C7 0%, #06B6D4 100%) !important;
@@ -103,15 +133,14 @@ st.markdown('''
         font-weight: 600 !important;
         font-size: 0.95rem !important;
         border-radius: 8px !important;
-        padding: 12px 20px !important;
-        width: 100%;
+        padding: 14px 20px !important;
+        letter-spacing: 0.025em !important;
+        box-shadow: 0 4px 14px rgba(6, 182, 212, 0.3) !important;
+        transition: all 0.2s ease !important;
     }
-
-    div[data-testid="stFileUploader"] {
-        background-color: #1F2937 !important;
-        border: 1px dashed #374151 !important;
-        border-radius: 8px !important;
-        padding: 10px !important;
+    div.stButton > button:first-child:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 20px rgba(6, 182, 212, 0.4) !important;
     }
 
     section[data-testid="stSidebar"] {
@@ -136,84 +165,68 @@ st.markdown('''
 <div class="hero-header">
     <div>
         <div class="hero-title">⚡ COMMAND CENTER <span style="color: #64748B; font-weight: 400;">|</span> AUDITORIA RFI</div>
-        <div class="hero-subtitle">MÓDULO DE VERIFICAÇÃO TÉCNICA E AUTO-PREENCHIMENTO VIA IA</div>
+        <div class="hero-subtitle">MÓDULO DE VERIFICAÇÃO TÉCNICA E LEVANTAMENTO DE PENDÊNCIAS</div>
     </div>
-    <div class="kpi-badge">SYSTEM READY</div>
+    <div class="kpi-badge">SYSTEM READY v2.5</div>
 </div>
 ''', unsafe_allow_html=True)
 
-# ------------------------------------------------------------------------------
-# GERENCIAMENTO SEGURO DA CHAVE DA API GROQ
-# ------------------------------------------------------------------------------
-api_key = ""
+# Helper para ler texto de arquivos anexados
+def extrair_texto_arquivos(uploaded_files):
+    texto_consolidado = ""
+    for file in uploaded_files:
+        try:
+            if file.name.endswith(".pdf"):
+                if pypdf:
+                    pdf_reader = pypdf.PdfReader(file)
+                    for page in pdf_reader.pages:
+                        texto_consolidado += (page.extract_text() or "") + "\n"
+                else:
+                    texto_consolidado += f"\n[Arquivo PDF '{file.name}' detectado, mas biblioteca 'pypdf' não instalada]\n"
+            elif file.name.endswith(".docx"):
+                if docx:
+                    doc = docx.Document(file)
+                    for p in doc.paragraphs:
+                        texto_consolidado += p.text + "\n"
+                else:
+                    texto_consolidado += f"\n[Arquivo DOCX '{file.name}' detectado, mas biblioteca 'python-docx' não instalada]\n"
+            elif file.name.endswith(".txt"):
+                texto_consolidado += file.read().decode("utf-8", errors="ignore") + "\n"
+        except Exception as e:
+            st.error(f"Erro ao processar arquivo {file.name}: {e}")
+    return texto_consolidado
 
-try:
-    if "GROQ_API_KEY" in st.secrets:
-        api_key = st.secrets["GROQ_API_KEY"]
-except Exception:
-    pass
+# Inicialização de Session State para campos dinâmicos
+def init_state(key, default_value):
+    if key not in st.session_state:
+        st.session_state[key] = default_value
 
-if not api_key:
-    api_key = os.environ.get("GROQ_API_KEY", "")
+# Definir opções dos seletores para validação da IA
+opcoes_icc = ["Não informado", "10 kA", "15 kA", "20 kA", "25 kA", "30 kA", "45 kA", "65 kA"]
+opcoes_dps = ["Não informado", "Classe I", "Classe II", "Classe I + II", "Classe III", "Não terá"]
+opcoes_temp = ["Não informado", "20 °C", "25 °C", "30 °C", "35 °C", "40 °C", "45 °C"]
+opcoes_acesso = ["Não informado", "Por Baixo (Inferior)", "Por Cima (Superior)", "Mista (Entrada Cima / Saída Baixo)", "Mista (Entrada Baixo / Saída Cima)"]
 
+# Sidebar - Configurações Técnicas
 st.sidebar.markdown("### ⚙️ MOTOR IA (GROQ)")
+api_key = st.sidebar.text_input("API Key:", type="password", help="Chave para análise semântica de edital")
 
-if not api_key:
-    api_key = st.sidebar.text_input("Cole a chave Groq (gsk_...):", type="password")
-    if not api_key:
-        st.sidebar.warning("⚠️ Insira a chave da API para habilitar a IA.")
-else:
-    st.sidebar.success("✓ Chave da API configurada com segurança!")
+modelos_disponiveis = []
+if api_key:
+    try:
+        res = requests.get("https://api.groq.com/openai/v1/models", headers={"Authorization": f"Bearer {api_key}"}, timeout=3)
+        if res.status_code == 200:
+            data = res.json()
+            modelos_disponiveis = [m["id"] for m in data.get("data", []) if any(k in m["id"] for k in ["llama", "mixtral", "gemma", "qwen"]) and "guard" not in m["id"]]
+    except Exception:
+        pass
 
-modelo_selecionado = st.sidebar.selectbox(
-    "Modelo em Execução:", 
-    [
-        "meta-llama/llama-3.1-8b-instant",
-        "meta-llama/llama-3.3-70b-versatile"
-    ]
-)
+if not modelos_disponiveis:
+    modelos_disponiveis = ["llama-3.1-8b-instant", "llama3-70b-8192", "mixtral-8x7b-32768"]
 
-# ------------------------------------------------------------------------------
-# OPÇÕES TÉCNICAS GERAIS E ESPECÍFICAS
-# ------------------------------------------------------------------------------
-# Gerais
-OPCOES_TENSAO = ["Não informado", "220V", "380V", "440V", "480V"]
-OPCOES_ICC = ["Não informado", "10 kA", "15 kA", "20 kA", "25 kA", "30 kA", "45 kA", "65 kA", "85 kA"]
-OPCOES_IP = ["Não informado", "IP31", "IP40", "IP42", "IP54", "IP55", "IP65"]
-OPCOES_FORMA = ["Não informado", "Forma 1", "Forma 2a", "Forma 2b", "Forma 3a", "Forma 3b", "Forma 4a", "Forma 4b"]
-OPCOES_DPS = ["Não informado", "Classe I", "Classe II", "Classe I + II", "Classe III", "Não terá"]
-OPCOES_CORRENTE_BUS = ["Não informado", "400 A", "630 A", "800 A", "1000 A", "1250 A", "1600 A", "2000 A", "2500 A", "3150 A", "4000 A"]
-OPCOES_MATERIAL_BUS = ["Não informado", "Cobre Eletrolítico", "Alumínio"]
-OPCOES_TEMP = ["Não informado", "20 °C", "25 °C", "30 °C", "35 °C", "40 °C", "45 °C"]
-OPCOES_ACESSOCABOS = ["Não informado", "Por Baixo (Inferior)", "Por Cima (Superior)", "Mista (Entrada Cima / Saída Baixo)", "Mista (Entrada Baixo / Saída Cima)"]
-OPCOES_COR = ["Não informado", "RAL 7032", "RAL 7035", "Munsell N6.5"]
+modelo_selecionado = st.sidebar.selectbox("Modelo em Execução:", modelos_disponiveis)
 
-# Específicas por Equipamento
-OPCOES_CCM_EXTRACAO = ["Não informado", "Gaveta Extraível", "Gaveta Fixa", "Misto (Extraível + Fixa)"]
-OPCOES_CCM_INVERSOR = ["Não informado", "Inversor de Frequência", "Soft-Starter", "Partida Direta", "Partida Estrela-Triângulo"]
-
-OPCOES_QDFL_DISJUNTOR = ["Não informado", "Disjuntor DIN (MDIC)", "Disjuntor Caixa Moldada (MCCB)", "NEMA"]
-OPCOES_QDFL_RESERVA = ["Não informado", "10%", "15%", "20%", "30%"]
-
-OPCOES_QGBT_TIPO_DISJUNTOR = ["Não informado", "Disjuntor Aberto (ACB)", "Disjuntor Caixa Moldada (MCCB)"]
-OPCOES_QGBT_MULTIMEDIDOR = ["Não informado", "Com Comunicação Modbus RS485", "Com Comunicação Ethernet/IP", "Digital Sem Comunicação", "Não Solicitado"]
-
-CAMPOS_CHAVE = [
-    "tensao", "icc", "ip", "forma", "dps", 
-    "corrente_bus", "material_bus", "temp", "acessocabos", "cor",
-    "ccm_extracao", "ccm_inversor",
-    "qdfl_disjuntor", "qdfl_reserva",
-    "qgbt_tipo_disjuntor", "qgbt_multimedidor"
-]
-
-def inicializar_campos():
-    for key in CAMPOS_CHAVE:
-        if key not in st.session_state:
-            st.session_state[key] = "Não informado"
-
-inicializar_campos()
-
-# 1. SELEÇÃO DE EQUIPAMENTO PRINCIPAL
+# Seleção de Equipamento Principal
 st.markdown("<div style='margin-bottom: 8px; font-weight: 600; font-size: 0.85rem; color: #94A3B8;'>EQUIPAMENTO EM AUDITORIA</div>", unsafe_allow_html=True)
 tipo_painel = st.selectbox(
     "Selecione a Tipologia:",
@@ -225,194 +238,202 @@ tipo_painel = st.selectbox(
     label_visibility="collapsed"
 )
 
-# 2. UPLOAD E PROCESSAMENTO DE DOCUMENTAÇÃO/EDITAL
-st.markdown("<div style='margin-top: 12px; margin-bottom: 8px; font-weight: 600; font-size: 0.85rem; color: #94A3B8;'>📎 ANEXAR ESPECIFICAÇÃO / EDITAL (PDF OU TXT)</div>", unsafe_allow_html=True)
-arquivo_anexado = st.file_uploader("Arraste ou selecione o arquivo do edital:", type=["pdf", "txt"], label_visibility="collapsed")
-
-texto_arquivo = ""
-if arquivo_anexado is not None:
-    try:
-        if arquivo_anexado.name.endswith(".pdf"):
-            reader = pypdf.PdfReader(arquivo_anexado)
-            for page in reader.pages:
-                texto_arquivo += page.extract_text() or ""
-        elif arquivo_anexado.name.endswith(".txt"):
-            texto_arquivo = arquivo_anexado.read().decode("utf-8")
-            
-        st.success(f"✓ Arquivo '{arquivo_anexado.name}' carregado com sucesso!")
-        
-        # BOTÃO PARA EXTRAÇÃO COMPLETA
-        if st.button("🤖 ANALISAR DOCUMENTAÇÃO COMPLETA E AUTO-PREENCHER"):
-            if not api_key:
-                st.error("Insira uma chave válida da Groq na barra lateral ou nos Secrets!")
-            else:
-                with st.spinner("IA executando varredura técnica geral e específica no edital..."):
-                    prompt_analise = f"""
-                    Você é um engenheiro eletricista analista de especificações técnicas para painéis elétricos.
-                    Examine o documento fornecido para o painel do tipo: {tipo_painel}.
-                    
-                    Mapeie cada campo EXCLUSIVAMENTE para um dos valores válidos abaixo:
-                    - tensao: {OPCOES_TENSAO}
-                    - icc: {OPCOES_ICC}
-                    - ip: {OPCOES_IP}
-                    - forma: {OPCOES_FORMA}
-                    - dps: {OPCOES_DPS}
-                    - corrente_bus: {OPCOES_CORRENTE_BUS}
-                    - material_bus: {OPCOES_MATERIAL_BUS}
-                    - temp: {OPCOES_TEMP}
-                    - acessocabos: {OPCOES_ACESSOCABOS}
-                    - cor: {OPCOES_COR}
-                    - ccm_extracao: {OPCOES_CCM_EXTRACAO}
-                    - ccm_inversor: {OPCOES_CCM_INVERSOR}
-                    - qdfl_disjuntor: {OPCOES_QDFL_DISJUNTOR}
-                    - qdfl_reserva: {OPCOES_QDFL_RESERVA}
-                    - qgbt_tipo_disjuntor: {OPCOES_QGBT_TIPO_DISJUNTOR}
-                    - qgbt_multimedidor: {OPCOES_QGBT_MULTIMEDIDOR}
-
-                    Retorne EXCLUSIVAMENTE um JSON sem formatação adicional:
-                    {{
-                        "tensao": "valor",
-                        "icc": "valor",
-                        "ip": "valor",
-                        "forma": "valor",
-                        "dps": "valor",
-                        "corrente_bus": "valor",
-                        "material_bus": "valor",
-                        "temp": "valor",
-                        "acessocabos": "valor",
-                        "cor": "valor",
-                        "ccm_extracao": "valor",
-                        "ccm_inversor": "valor",
-                        "qdfl_disjuntor": "valor",
-                        "qdfl_reserva": "valor",
-                        "qgbt_tipo_disjuntor": "valor",
-                        "qgbt_multimedidor": "valor"
-                    }}
-
-                    TEXTO DO DOCUMENTO:
-                    {texto_arquivo[:8000]}
-                    """
-                    try:
-                        res = requests.post(
-                            "https://api.groq.com/openai/v1/chat/completions",
-                            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                            json={
-                                "model": modelo_selecionado,
-                                "messages": [{"role": "user", "content": prompt_analise}],
-                                "temperature": 0.0,
-                                "response_format": {"type": "json_object"}
-                            },
-                            timeout=25
-                        )
-                        if res.status_code == 200:
-                            dados = json.loads(res.json()["choices"][0]["message"]["content"])
-                            
-                            mapeamento = {
-                                "tensao": OPCOES_TENSAO,
-                                "icc": OPCOES_ICC,
-                                "ip": OPCOES_IP,
-                                "forma": OPCOES_FORMA,
-                                "dps": OPCOES_DPS,
-                                "corrente_bus": OPCOES_CORRENTE_BUS,
-                                "material_bus": OPCOES_MATERIAL_BUS,
-                                "temp": OPCOES_TEMP,
-                                "acessocabos": OPCOES_ACESSOCABOS,
-                                "cor": OPCOES_COR,
-                                "ccm_extracao": OPCOES_CCM_EXTRACAO,
-                                "ccm_inversor": OPCOES_CCM_INVERSOR,
-                                "qdfl_disjuntor": OPCOES_QDFL_DISJUNTOR,
-                                "qdfl_reserva": OPCOES_QDFL_RESERVA,
-                                "qgbt_tipo_disjuntor": OPCOES_QGBT_TIPO_DISJUNTOR,
-                                "qgbt_multimedidor": OPCOES_QGBT_MULTIMEDIDOR
-                            }
-                            
-                            for campo, lista_opcoes in mapeamento.items():
-                                if dados.get(campo) in lista_opcoes:
-                                    st.session_state[campo] = dados[campo]
-                            
-                            st.success("✨ Auditoria concluída! Formulário preenchido automaticamente.")
-                            st.rerun()
-                        else:
-                            st.error(f"Erro na API Groq ({res.status_code}): {res.text}")
-                    except Exception as e:
-                        st.error(f"Erro ao conectar com a IA: {e}")
-
-    except Exception as e:
-        st.error(f"Erro ao ler arquivo: {e}")
-
 st.markdown("<br>", unsafe_allow_html=True)
 
-# Layout Principal em Duas Colunas
-col_form, col_summary = st.columns([1.3, 0.7], gap="large")
+# Definir opções baseadas no tipo de painel
+if "QDFL" in tipo_painel:
+    opcoes_altura = ["1.000 mm (Padrão QDFL)", "600 mm a 800 mm", "800 mm a 1.200 mm", "1.200 mm a 1.600 mm", "Não informado"]
+    opcoes_profundidade = ["300 mm (Padrão QDFL)", "200 mm a 300 mm", "300 mm a 400 mm", "400 mm a 600 mm", "Não informado"]
+    opcoes_chaparia = ["Não informado", "Caixa de Sobrepor (Padrão Rittal)", "Armário de Coluna", "Padrão Fabricante"]
+    opcoes_tensao = ["220V / 60Hz (Padrão)", "380V / 60Hz", "Não informado"]
+else:
+    opcoes_altura = ["2.000 mm (Padrão)", "1.200 mm a 1.600 mm", "1.600 mm a 2.000 mm", "2.000 mm a 2.300 mm", "Não informado"]
+    opcoes_profundidade = ["600 mm (Padrão)", "400 mm a 600 mm", "600 mm a 800 mm", "800 mm a 1.000 mm", "Não informado"]
+    if "QGBT" in tipo_painel:
+        opcoes_chaparia = ["Não informado", "TS8 Rittal (Padrão QGBT)", "VX25 Rittal", "Forma 3b / 4b", "Padrão Fabricante"]
+        opcoes_tensao = ["380V / 60Hz (Padrão)", "440V / 60Hz", "480V / 60Hz", "Não informado"]
+    else:  # CCM
+        opcoes_chaparia = ["Não informado", "TS8 Rittal (Padrão CCM)", "Coluna Extraível", "Coluna Fixa", "Padrão Fabricante"]
+        opcoes_tensao = ["380V / 60Hz", "440V / 60Hz", "220V / 60Hz", "Não informado"]
+
+opcoes_largura = ["Não informado", "600 mm a 1.000 mm", "1.000 mm a 2.000 mm", "2.000 mm a 3.000 mm", "3.000 mm a 4.000 mm", "4.000 mm a 5.000 mm", "5.000 mm a 6.000 mm"]
+
+# Inicializar estados das seleções
+init_state("icc", opcoes_icc[0])
+init_state("dps_classe", opcoes_dps[0])
+init_state("temp_ambiente", opcoes_temp[0])
+init_state("entrada_saida_cabos", opcoes_acesso[0])
+init_state("altura_limite", opcoes_altura[0])
+init_state("profundidade_limite", opcoes_profundidade[0])
+init_state("largura_limite", opcoes_largura[0])
+init_state("chaparia", opcoes_chaparia[0])
+init_state("tensao_nominal", opcoes_tensao[0])
+
+# Layout Principal Dividido
+col_form, col_summary = st.columns([1.25, 0.75], gap="large")
 
 with col_form:
-    # SEÇÃO 1: PARÂMETROS GERAIS
     st.markdown('''
     <div class="card-box">
-        <div class="card-header">📐 1. Parâmetros Elétricos & Operacionais Gerais</div>
+        <div class="card-header">📐 1. Parâmetros Construtivos & Elétricos Gerais</div>
     ''', unsafe_allow_html=True)
-    
+
     c1, c2 = st.columns(2)
     with c1:
-        tensao = st.selectbox("Tensão Nominal:", OPCOES_TENSAO, index=OPCOES_TENSAO.index(st.session_state["tensao"]))
-        icc = st.selectbox("Corrente Curto (Icc):", OPCOES_ICC, index=OPCOES_ICC.index(st.session_state["icc"]))
-        corrente_bus = st.selectbox("Corrente Barramento:", OPCOES_CORRENTE_BUS, index=OPCOES_CORRENTE_BUS.index(st.session_state["corrente_bus"]))
-        material_bus = st.selectbox("Material Barramento:", OPCOES_MATERIAL_BUS, index=OPCOES_MATERIAL_BUS.index(st.session_state["material_bus"]))
-        dps_classe = st.selectbox("Classe DPS:", OPCOES_DPS, index=OPCOES_DPS.index(st.session_state["dps"]))
-
+        icc = st.selectbox("Corrente Curto (Icc):", opcoes_icc, key="icc")
+        dps_classe = st.selectbox("Classe DPS:", opcoes_dps, key="dps_classe")
+        temp_ambiente = st.selectbox("Temp. Ambiente Máxima:", opcoes_temp, key="temp_ambiente")
     with c2:
-        ip_grau = st.selectbox("Grau de Proteção (IP):", OPCOES_IP, index=OPCOES_IP.index(st.session_state["ip"]))
-        forma_seg = st.selectbox("Forma de Segregação:", OPCOES_FORMA, index=OPCOES_FORMA.index(st.session_state["forma"]))
-        temp_ambiente = st.selectbox("Temp. Ambiente Máx:", OPCOES_TEMP, index=OPCOES_TEMP.index(st.session_state["temp"]))
-        entrada_saida_cabos = st.selectbox("Acesso dos Cabos:", OPCOES_ACESSOCABOS, index=OPCOES_ACESSOCABOS.index(st.session_state["acessocabos"]))
-        cor_pintura = st.selectbox("Pintura / Cor:", OPCOES_COR, index=OPCOES_COR.index(st.session_state["cor"]))
-        
+        entrada_saida_cabos = st.selectbox("Acesso Cabos:", opcoes_acesso, key="entrada_saida_cabos")
+        altura_limite = st.selectbox("Limite Altura:", opcoes_altura, key="altura_limite")
+        profundidade_limite = st.selectbox("Limite Profundidade:", opcoes_profundidade, key="profundidade_limite")
+    
+    c_chap1, c_chap2 = st.columns(2)
+    with c_chap1:
+        largura_limite = st.selectbox("Limite Largura:", opcoes_largura, key="largura_limite")
+    with c_chap2:
+        chaparia = st.selectbox("Invólucro / Chaparia:", opcoes_chaparia, key="chaparia")
+        tensao_nominal = st.selectbox("Tensão Nominal:", opcoes_tensao, key="tensao_nominal")
+    
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # SEÇÃO 2: PARÂMETROS ESPECÍFICOS POR TIPOLOGIA (DINÂMICOS)
+    # BLOCO TÉCNICO ESPECÍFICO
     if "CCM" in tipo_painel:
         st.markdown('''
         <div class="card-box">
-            <div class="card-header">⚙️ 2. Especificações Exclusivas de CCM</div>
+            <div class="card-header">⚙️ 2. Especificações do CCM (Automação e Cargas)</div>
         ''', unsafe_allow_html=True)
+        
         c1, c2 = st.columns(2)
         with c1:
-            ccm_extracao = st.selectbox("Tipo de Gaveta:", OPCOES_CCM_EXTRACAO, index=OPCOES_CCM_EXTRACAO.index(st.session_state["ccm_extracao"]))
+            quantitativo_partidas = st.selectbox("Total Partidas:", ["Não informado", "1 a 5 partidas", "5 a 10 partidas", "10 a 20 partidas", "20 a 30 partidas", "Mais de 30 partidas"], key="quantitativo_partidas")
+            tipo_partida = st.selectbox("Partida Predominante:", ["Não informado", "Partida Direta", "Inversor de Frequência", "Soft-Starter", "Estrela-Triângulo", "Mista"], key="tipo_partida")
+            clp_es = st.selectbox("CLP / E/S Remota:", ["Não informado", "ControlLogix", "CompactLogix", "Flex I/O", "Point I/O", "Não terá"], key="clp_es")
         with c2:
-            ccm_inversor = st.selectbox("Tipo de Partida Predominante:", OPCOES_CCM_INVERSOR, index=OPCOES_CCM_INVERSOR.index(st.session_state["ccm_inversor"]))
+            potencia_motores = st.selectbox("Potência Motores:", ["Não informado", "Definido no Texto de Observações"], key="potencia_motores")
+            categoria_seguranca = st.selectbox("Categoria NR-12:", ["Não informado", "Categoria 1", "Categoria 2", "Categoria 3", "Categoria 4", "Não se aplica"], key="categoria_seguranca")
+            quantitativo_io = st.selectbox("Volume I/O:", ["Não informado", "Informado"], key="quantitativo_io")
+            
+        modo_acionamento = st.selectbox("Modo Acionamento:", ["Não informado", "Local (Botoeiras na Porta)", "Remoto (Via CLP/Rede)", "Misto"], key="modo_acionamento")
+        topologia_rede = st.selectbox("Topologia da Rede:", ["Não informado", "Anel (DLR / MRP)", "Estrela", "Barramento", "Não terá"], key="topologia_rede")
+        protocolo_comunicacao = st.selectbox("Protocolo Comunicação:", ["Não informado", "EtherNet/IP", "PROFINET", "Modbus TCP", "Não terá"], key="protocolo_comunicacao")
+        
         st.markdown('</div>', unsafe_allow_html=True)
 
     elif "QDFL" in tipo_painel:
         st.markdown('''
         <div class="card-box">
-            <div class="card-header">💡 2. Especificações Exclusivas de QDFL</div>
+            <div class="card-header">💡 2. Especificações do QDFL (Cargas de Iluminação e Tomadas)</div>
         ''', unsafe_allow_html=True)
+        
         c1, c2 = st.columns(2)
         with c1:
-            qdfl_disjuntor = st.selectbox("Padrão dos Disjuntores Módulos:", OPCOES_QDFL_DISJUNTOR, index=OPCOES_QDFL_DISJUNTOR.index(st.session_state["qdfl_disjuntor"]))
+            qdfl_cargas = st.selectbox("Qtd de Circuitos:", ["Não informado", "1 a 10 circuitos", "10 a 20 circuitos", "20 a 40 circuitos", "Mais de 40 circuitos"], key="qdfl_cargas")
+            qdfl_corrente_disjuntores = st.selectbox("Corrente Disjuntores:", ["Não informado", "Especificado nas Observações / Tabela de Cargas"], key="qdfl_corrente_disjuntores")
+            qdfl_idr = st.selectbox("Aplicação de IDR (DR):", ["Não informado", "Sim (Geral)", "Sim (Apenas em Cargas Específicas)", "Não terá"], key="qdfl_idr")
         with c2:
-            qdfl_reserva = st.selectbox("Espaço de Reserva de Circuitos:", OPCOES_QDFL_RESERVA, index=OPCOES_QDFL_RESERVA.index(st.session_state["qdfl_reserva"]))
+            qdfl_idr_detalhe = st.selectbox("Cargas com IDR:", ["Não informado", "Detalhado nas Observações", "Todas as Iluminações/Tomadas"], key="qdfl_idr_detalhe")
+            qdfl_acionamento = st.selectbox("Acionamentos na Porta:", ["Não informado", "Chaves Comutadoras (Man-Off-Auto)", "Botoeiras de Iluminação", "Sem Acionamento na Porta (Apenas Disjuntores Internos)"], key="qdfl_acionamento")
+
         st.markdown('</div>', unsafe_allow_html=True)
 
     elif "QGBT" in tipo_painel:
         st.markdown('''
         <div class="card-box">
-            <div class="card-header">🏬 2. Especificações Exclusivas de QGBT</div>
+            <div class="card-header">🔌 2. Especificações do QGBT (Entradas e Barramentos)</div>
         ''', unsafe_allow_html=True)
+        
         c1, c2 = st.columns(2)
         with c1:
-            qgbt_tipo_disjuntor = st.selectbox("Disjuntor Geral Entrada:", OPCOES_QGBT_TIPO_DISJUNTOR, index=OPCOES_QGBT_TIPO_DISJUNTOR.index(st.session_state["qgbt_tipo_disjuntor"]))
+            qgbt_disjuntor_geral = st.selectbox("Disjuntor Geral:", ["Não informado", "Aberto (ACB) Extraível", "Aberto (ACB) Fixo", "Caixa Moldada (MCCB)", "Sem Disjuntor Geral (Apenas Chave Seccionadora)"], key="qgbt_disjuntor_geral")
+            qgbt_corrente_geral = st.selectbox("Corrente Nominal (In):", ["Não informado", "Até 800A", "1000A a 1600A", "2000A a 3200A", "Acima de 4000A"], key="qgbt_corrente_geral")
+            qgbt_barramento = st.selectbox("Tratamento Barramento:", ["Não informado", "Cobre Eletrolítico Nu", "Cobre Prateado", "Cobre Estanhado", "Pintado"], key="qgbt_barramento")
         with c2:
-            qgbt_multimedidor = st.selectbox("Multimedidor de Grandezas:", OPCOES_QGBT_MULTIMEDIDOR, index=OPCOES_QGBT_MULTIMEDIDOR.index(st.session_state["qgbt_multimedidor"]))
+            qgbt_forma_separacao = st.selectbox("Forma Separação (IEC 61439):", ["Não informado", "Forma 1", "Forma 2b", "Forma 3b", "Forma 4b"], key="qgbt_forma_separacao")
+            qgbt_medicao = st.selectbox("Multimedidor de Porta:", ["Não informado", "Multimedidor Digital na Porta (com TC)", "Multimedidor com Comunicação Modbus/Ethernet", "Não terá"], key="qgbt_medicao")
+            qgbt_recomposição_fp = st.selectbox("Correção Fator de Potência:", ["Não informado", "Integrado ao QGBT (Automático)", "Painel Separado", "Não terá"], key="qgbt_recomposição_fp")
+
         st.markdown('</div>', unsafe_allow_html=True)
 
-# Coluna de Consolidação e Geração do RFI
+    # BLOCO DE EDITAL E DOCUMENTOS ANEXOS
+    st.markdown('''
+    <div class="card-box">
+        <div class="card-header">📄 3. Análise de Documentos & Edital</div>
+    ''', unsafe_allow_html=True)
+    
+    anexos = st.file_uploader("Anexar Documentos / Especificações (PDF, DOCX, TXT):", type=["pdf", "docx", "txt"], accept_multiple_files=True)
+    obs_adicionais = st.text_area("Texto / Trechos do Edital:", height=100, placeholder="Ex: O painel deverá conter barramentos estanhados, corrente de curto de 30 kA, acionamento via Eth/IP...", key="obs_adicionais")
+    
+    col_auto1, col_auto2 = st.columns([1, 1])
+    with col_auto1:
+        btn_auto_preencher = st.button("🤖 ANALISAR & PREENCHER SOZINHO")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Lógica do Auto-Preenchimento via IA
+    if btn_auto_preencher:
+        texto_extraido_anexos = extrair_texto_arquivos(anexos) if anexos else ""
+        texto_completo_para_ia = (obs_adicionais + "\n\n" + texto_extraido_anexos).strip()
+
+        if not texto_completo_para_ia:
+            st.warning("⚠️ Forneça um trecho de texto ou anexe um documento para realizar a análise.")
+        elif not api_key:
+            st.error("⚠️ Insira a chave da API (Groq) no menu lateral para ativar a IA.")
+        else:
+            with st.spinner("Analisando especificações e auto-preenchendo parâmetros..."):
+                prompt_json = f"""
+                Você é um assistente técnico especialista em projetos elétricos.
+                Analise o texto a seguir e extraia as configurações para o painel {tipo_painel}.
+                
+                Texto para Análise:
+                \"\"\"{texto_completo_para_ia[:8000]}\"\"\"
+                
+                Retorne EXATAMENTE e APENAS um objeto JSON válidos com as chaves a seguir, escolhendo exatamente uma das opções fornecidas entre colchetes para cada chave:
+                - "icc": {json.dumps(opcoes_icc)}
+                - "dps_classe": {json.dumps(opcoes_dps)}
+                - "temp_ambiente": {json.dumps(opcoes_temp)}
+                - "entrada_saida_cabos": {json.dumps(opcoes_acesso)}
+                - "altura_limite": {json.dumps(opcoes_altura)}
+                - "profundidade_limite": {json.dumps(opcoes_profundidade)}
+                - "largura_limite": {json.dumps(opcoes_largura)}
+                - "chaparia": {json.dumps(opcoes_chaparia)}
+                - "tensao_nominal": {json.dumps(opcoes_tensao)}
+                
+                Se a informação não estiver presente no texto, atribua obrigatoriamente "Não informado".
+                Responda APENAS o JSON.
+                """
+                
+                try:
+                    res = requests.post(
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                        json={
+                            "model": modelo_selecionado,
+                            "messages": [{"role": "user", "content": prompt_json}],
+                            "temperature": 0.0,
+                            "response_format": {"type": "json_object"}
+                        },
+                        timeout=15
+                    )
+                    if res.status_code == 200:
+                        dados_extraidos = json.loads(res.json()["choices"][0]["message"]["content"])
+                        for chave, valor in dados_extraidos.items():
+                            if chave in st.session_state:
+                                st.session_state[chave] = valor
+                        st.success("✅ Formulário atualizado com base nos documentos analisados!")
+                        st.rerun()
+                    else:
+                        st.error(f"Erro ao consultar IA: HTTP {res.status_code}")
+                except Exception as e:
+                    st.error(f"Falha ao realizar auto-preenchimento: {e}")
+
+# Coluna Lateral: Resumo das Pendências
 with col_summary:
     st.markdown(f'''
     <div style="position: sticky; top: 20px;">
         <div style="background: #111827; border: 1px solid #1F2937; border-radius: 10px; padding: 20px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                <span style="font-size: 0.9rem; font-weight: 700; color: #F3F4F6;">PAINEL DE AUDITORIA DE RFI</span>
+                <span style="font-size: 0.9rem; font-weight: 700; color: #F3F4F6;">PAINEL DE CONSOLIDAÇÃO</span>
                 <span style="background: #0284C7; color: #FFF; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 600;">{tipo_painel.split(' ')[0]}</span>
             </div>
     ''', unsafe_allow_html=True)
@@ -422,43 +443,108 @@ with col_summary:
     if btn_processar:
         pendencias = []
 
-        # Validação dos Gerais
-        if tensao == "Não informado": pendencias.append("Qual a tensão de operação nominal do painel (V)?")
-        if icc == "Não informado": pendencias.append("Qual a corrente suportável de curto-circuito (Icc em kA)?")
-        if corrente_bus == "Não informado": pendencias.append("Qual a corrente nominal do barramento principal (A)?")
-        if material_bus == "Não informado": pendencias.append("Qual o material do barramento (Cobre Eletrolítico ou Alumínio)?")
-        if ip_grau == "Não informado": pendencias.append("Qual o grau de proteção IP exigido do invólucro?")
-        if forma_seg == "Não informado": pendencias.append("Qual a forma construtiva de segregação interna (IEC 61439)?")
-        if dps_classe == "Não informado": pendencias.append("Qual a classe dos Supressores de Surto (DPS)?")
-        if temp_ambiente == "Não informado": pendencias.append("Qual a temperatura ambiente máxima do ambiente de instalação?")
-        if entrada_saida_cabos == "Não informado": pendencias.append("Qual o sentido de entrada e saída dos cabos de força e comando?")
-        if cor_pintura == "Não informado": pendencias.append("Qual a especificação da cor do acabamento da pintura?")
+        # PENDÊNCIAS GERAIS
+        if st.session_state.get("icc") == "Não informado": pendencias.append("Qual é a corrente de curto-circuito (Icc em kA) no ponto de instalação?")
+        if st.session_state.get("dps_classe") == "Não informado": pendencias.append("Qual é a classe de proteção do DPS exigida?")
+        if st.session_state.get("temp_ambiente") == "Não informado": pendencias.append("Qual é a temperatura ambiente máxima no local?")
+        if st.session_state.get("entrada_saida_cabos") == "Não informado": pendencias.append("Qual a direção de entrada e saída dos cabos (superior ou inferior)?")
+        if st.session_state.get("altura_limite") == "Não informado": pendencias.append("Qual é o limite de altura disponível para o painel?")
+        if st.session_state.get("profundidade_limite") == "Não informado": pendencias.append("Qual é o limite de profundidade disponível para o painel?")
+        if st.session_state.get("largura_limite") == "Não informado": pendencias.append("Qual é o limite de largura disponível para o painel?")
+        if st.session_state.get("chaparia") == "Não informado": pendencias.append("Qual é o padrão de invólucro / chaparia exigido para o painel?")
+        if st.session_state.get("tensao_nominal") == "Não informado": pendencias.append("Qual é a tensão nominal e frequência da rede de alimentação?")
 
-        # Validação dos Específicos
+        # PENDÊNCIAS ESPECÍFICAS
         if "CCM" in tipo_painel:
-            if st.session_state["ccm_extracao"] == "Não informado": pendencias.append("CCM: Qual o tipo de construtivo de gavetas (Extraíveis ou Fixas)?")
-            if st.session_state["ccm_inversor"] == "Não informado": pendencias.append("CCM: Qual o tipo de acionamento/partida principal solicitado?")
+            if st.session_state.get("quantitativo_partidas") == "Não informado": pendencias.append("Qual é o quantitativo total de partidas do CCM?")
+            if st.session_state.get("tipo_partida") == "Não informado": pendencias.append("Qual é o tipo de partida exigido para os motores?")
+            if st.session_state.get("potencia_motores") == "Não informado": pendencias.append("Qual é a potência (kW/cv) e corrente nominal de cada motor?")
+            if st.session_state.get("categoria_seguranca") == "Não informado": pendencias.append("Qual a Categoria de Segurança (CAT) exigida pela NR-12?")
+            if st.session_state.get("modo_acionamento") == "Não informado": pendencias.append("Como será o acionamento dos motores (Local, Remoto ou Misto)?")
+            if st.session_state.get("clp_es") == "Não informado": pendencias.append("Qual é o modelo do CLP ou E/S Remota exigido?")
+            if st.session_state.get("quantitativo_io") == "Não informado": pendencias.append("Qual é o quantitativo total de I/O's (entradas e saídas)?")
+            if st.session_state.get("topologia_rede") == "Não informado": pendencias.append("Qual é a topologia da rede de comunicação exigida?")
+            if st.session_state.get("protocolo_comunicacao") == "Não informado": pendencias.append("Qual protocolo de comunicação industrial deve ser utilizado?")
+
         elif "QDFL" in tipo_painel:
-            if st.session_state["qdfl_disjuntor"] == "Não informado": pendencias.append("QDFL: Qual o padrão técnico dos disjuntores dos circuitos terminais?")
-            if st.session_state["qdfl_reserva"] == "Não informado": pendencias.append("QDFL: Qual a percentagem mínima de reserva necessária?")
+            if st.session_state.get("qdfl_cargas") == "Não informado": pendencias.append("Qual é a quantidade exata de cargas/circuitos do QDFL?")
+            if st.session_state.get("qdfl_corrente_disjuntores") == "Não informado": pendencias.append("Qual a corrente nominal de projeto para cada disjuntor de saída?")
+            if st.session_state.get("qdfl_idr") == "Não informado": pendencias.append("Será necessária a aplicação de proteção residual IDR (DR)?")
+            if st.session_state.get("qdfl_idr") == "Sim (Apenas em Cargas Específicas)" and st.session_state.get("qdfl_idr_detalhe") == "Não informado":
+                pendencias.append("Em quais saídas/cargas específicas é obrigatória a utilização do IDR?")
+            if st.session_state.get("qdfl_acionamento") == "Não informado": pendencias.append("Haverá comandos na porta (comutadoras/botoeiras) ou apenas operação interna dos disjuntores?")
+
         elif "QGBT" in tipo_painel:
-            if st.session_state["qgbt_tipo_disjuntor"] == "Não informado": pendencias.append("QGBT: Qual o modelo do disjuntor de entrada principal (Aberto ou Caixa Moldada)?")
-            if st.session_state["qgbt_multimedidor"] == "Não informado": pendencias.append("QGBT: Qual o padrão e protocolo do multimedidor digital de energia?")
+            if st.session_state.get("qgbt_disjuntor_geral") == "Não informado": pendencias.append("Qual o tipo do disjuntor geral de entrada (ACB Fixo/Extraível ou Caixa Moldada)?")
+            if st.session_state.get("qgbt_corrente_geral") == "Não informado": pendencias.append("Qual a corrente nominal geral (In em Amperes) do QGBT?")
+            if st.session_state.get("qgbt_barramento") == "Não informado": pendencias.append("Qual é o tipo de tratamento do barramento de fase/neutro (Nu, Estanhado, Prateado)?")
+            if st.session_state.get("qgbt_forma_separacao") == "Não informado": pendencias.append("Qual a Forma de Separação Interna (NBR IEC 61439) exigida para o QGBT (Ex: 2b, 3b, 4b)?")
+            if st.session_state.get("qgbt_medicao") == "Não informado": pendencias.append("Qual o modelo de multimedidor de grandezas elétricas necessário na porta?")
+            if st.session_state.get("qgbt_recomposição_fp") == "Não informado": pendencias.append("O QGBT deverá possuir banco de capacitores automático integrado?")
+
+        # EXTRAÇÃO IA DE TEXTO E ARQUIVOS
+        duvidas_extras = []
+        texto_anexos_geral = extrair_texto_arquivos(anexos) if anexos else ""
+        texto_consolidado = (obs_adicionais + "\n" + texto_anexos_geral).strip()
+
+        if texto_consolidado and api_key:
+            system_prompt = (
+                f"Você é um engenheiro orçamentista de painéis elétricos no Brasil especializado em {tipo_painel}. "
+                "Leia o texto fornecido pelo usuário e crie perguntas técnicas claras em Português do Brasil sobre pontos não esclarecidos. "
+                "PROIBIDO USAR INGLÊS OU EXIBIR RACIOCÍNIO INTERNO. "
+                "Responda APENAS em tópicos com perguntas diretas iniciando por 'Qual', 'Quais', 'Há' ou 'É'."
+            )
+            try:
+                res = requests.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    json={
+                        "model": modelo_selecionado,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": texto_consolidado[:6000]}
+                        ],
+                        "temperature": 0.0
+                    },
+                    timeout=10
+                )
+                if res.status_code == 200:
+                    texto_ia = res.json()["choices"][0]["message"]["content"]
+                    padrao_ptbr = re.compile(r'^\s*[\*\-]?\s*(Qual|Quais|Como|Há|É|Existe|Deve)\b.*\?$', re.IGNORECASE)
+                    for linha in texto_ia.split('\n'):
+                        linha_limpa = linha.strip()
+                        if padrao_ptbr.match(linha_limpa):
+                            pergunta_formatada = re.sub(r'^[\*\-\d\.\s]+', '', linha_limpa)
+                            duvidas_extras.append(pergunta_formatada)
+            except Exception as e:
+                st.error(f"Erro no processamento LLM: {e}")
+
+        todas_duvidas = list(dict.fromkeys(pendencias + duvidas_extras))
 
         st.markdown("<br>", unsafe_allow_html=True)
-        if pendencias:
+        if todas_duvidas:
             st.markdown(f'''
             <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid #F59E0B; padding: 10px 14px; border-radius: 6px; font-size: 0.8rem; color: #FBBF24; font-family: 'JetBrains Mono', monospace; margin-bottom: 12px;">
-                ⚠️ {len(pendencias)} DÚVIDA(S) TÉCNICA(S) DETECTADA(S)
+                ⚠️ {len(todas_duvidas)} PENDÊNCIA(S) DETECTADA(S)
             </div>
             ''', unsafe_allow_html=True)
 
-            for idx, d in enumerate(pendencias, 1):
+            texto_relatorio = f"RFI - LEVANTAMENTO DE DÚVIDAS TÉCNICAS ({tipo_painel.split(' ')[0]})\n\n"
+            for idx, d in enumerate(todas_duvidas, 1):
                 st.markdown(f'<div class="pending-item"><b>{idx}.</b> {d}</div>', unsafe_allow_html=True)
+                texto_relatorio += f"{idx}. {d}\n"
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.download_button(
+                label="📥 EXPORTAR RELATÓRIO (.TXT)",
+                data=texto_relatorio,
+                file_name=f"rfi_duvidas_{tipo_painel.split(' ')[0].lower()}.txt",
+                mime="text/plain"
+            )
         else:
             st.markdown('''
             <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10B981; padding: 12px; border-radius: 6px; font-size: 0.85rem; color: #34D399; text-align: center;">
-                ✓ NENHUMA PENDÊNCIA TÉCNICA! O PAINEL ESTÁ TOTALMENTE ESPECIFICADO.
+                ✓ NENHUMA PENDÊNCIA ENCONTRADA
             </div>
             ''', unsafe_allow_html=True)
 
