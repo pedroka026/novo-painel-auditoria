@@ -174,8 +174,9 @@ modelo_selecionado = st.sidebar.selectbox(
 )
 
 # ------------------------------------------------------------------------------
-# OPÇÕES TÉCNICAS COMPLETAS PARA O FORMULÁRIO
+# OPÇÕES TÉCNICAS GERAIS E ESPECÍFICAS
 # ------------------------------------------------------------------------------
+# Gerais
 OPCOES_TENSAO = ["Não informado", "220V", "380V", "440V", "480V"]
 OPCOES_ICC = ["Não informado", "10 kA", "15 kA", "20 kA", "25 kA", "30 kA", "45 kA", "65 kA", "85 kA"]
 OPCOES_IP = ["Não informado", "IP31", "IP40", "IP42", "IP54", "IP55", "IP65"]
@@ -187,9 +188,22 @@ OPCOES_TEMP = ["Não informado", "20 °C", "25 °C", "30 °C", "35 °C", "40 °C
 OPCOES_ACESSOCABOS = ["Não informado", "Por Baixo (Inferior)", "Por Cima (Superior)", "Mista (Entrada Cima / Saída Baixo)", "Mista (Entrada Baixo / Saída Cima)"]
 OPCOES_COR = ["Não informado", "RAL 7032", "RAL 7035", "Munsell N6.5"]
 
+# Específicas por Equipamento
+OPCOES_CCM_EXTRACAO = ["Não informado", "Gaveta Extraível", "Gaveta Fixa", "Misto (Extraível + Fixa)"]
+OPCOES_CCM_INVERSOR = ["Não informado", "Inversor de Frequência", "Soft-Starter", "Partida Direta", "Partida Estrela-Triângulo"]
+
+OPCOES_QDFL_DISJUNTOR = ["Não informado", "Disjuntor DIN (MDIC)", "Disjuntor Caixa Moldada (MCCB)", "NEMA"]
+OPCOES_QDFL_RESERVA = ["Não informado", "10%", "15%", "20%", "30%"]
+
+OPCOES_QGBT_TIPO_DISJUNTOR = ["Não informado", "Disjuntor Aberto (ACB)", "Disjuntor Caixa Moldada (MCCB)"]
+OPCOES_QGBT_MULTIMEDIDOR = ["Não informado", "Com Comunicação Modbus RS485", "Com Comunicação Ethernet/IP", "Digital Sem Comunicação", "Não Solicitado"]
+
 CAMPOS_CHAVE = [
     "tensao", "icc", "ip", "forma", "dps", 
-    "corrente_bus", "material_bus", "temp", "acessocabos", "cor"
+    "corrente_bus", "material_bus", "temp", "acessocabos", "cor",
+    "ccm_extracao", "ccm_inversor",
+    "qdfl_disjuntor", "qdfl_reserva",
+    "qgbt_tipo_disjuntor", "qgbt_multimedidor"
 ]
 
 def inicializar_campos():
@@ -232,12 +246,12 @@ if arquivo_anexado is not None:
             if not api_key:
                 st.error("Insira uma chave válida da Groq na barra lateral ou nos Secrets!")
             else:
-                with st.spinner("IA executando varredura técnica completa no edital..."):
+                with st.spinner("IA executando varredura técnica geral e específica no edital..."):
                     prompt_analise = f"""
                     Você é um engenheiro eletricista analista de especificações técnicas para painéis elétricos.
-                    Examine o documento fornecido e extraia exatamente as propriedades solicitadas.
+                    Examine o documento fornecido para o painel do tipo: {tipo_painel}.
                     
-                    Você DEVE mapear cada campo exclusivamente para um dos valores válidos abaixo:
+                    Mapeie cada campo EXCLUSIVAMENTE para um dos valores válidos abaixo:
                     - tensao: {OPCOES_TENSAO}
                     - icc: {OPCOES_ICC}
                     - ip: {OPCOES_IP}
@@ -248,6 +262,12 @@ if arquivo_anexado is not None:
                     - temp: {OPCOES_TEMP}
                     - acessocabos: {OPCOES_ACESSOCABOS}
                     - cor: {OPCOES_COR}
+                    - ccm_extracao: {OPCOES_CCM_EXTRACAO}
+                    - ccm_inversor: {OPCOES_CCM_INVERSOR}
+                    - qdfl_disjuntor: {OPCOES_QDFL_DISJUNTOR}
+                    - qdfl_reserva: {OPCOES_QDFL_RESERVA}
+                    - qgbt_tipo_disjuntor: {OPCOES_QGBT_TIPO_DISJUNTOR}
+                    - qgbt_multimedidor: {OPCOES_QGBT_MULTIMEDIDOR}
 
                     Retorne EXCLUSIVAMENTE um JSON sem formatação adicional:
                     {{
@@ -260,7 +280,13 @@ if arquivo_anexado is not None:
                         "material_bus": "valor",
                         "temp": "valor",
                         "acessocabos": "valor",
-                        "cor": "valor"
+                        "cor": "valor",
+                        "ccm_extracao": "valor",
+                        "ccm_inversor": "valor",
+                        "qdfl_disjuntor": "valor",
+                        "qdfl_reserva": "valor",
+                        "qgbt_tipo_disjuntor": "valor",
+                        "qgbt_multimedidor": "valor"
                     }}
 
                     TEXTO DO DOCUMENTO:
@@ -291,7 +317,13 @@ if arquivo_anexado is not None:
                                 "material_bus": OPCOES_MATERIAL_BUS,
                                 "temp": OPCOES_TEMP,
                                 "acessocabos": OPCOES_ACESSOCABOS,
-                                "cor": OPCOES_COR
+                                "cor": OPCOES_COR,
+                                "ccm_extracao": OPCOES_CCM_EXTRACAO,
+                                "ccm_inversor": OPCOES_CCM_INVERSOR,
+                                "qdfl_disjuntor": OPCOES_QDFL_DISJUNTOR,
+                                "qdfl_reserva": OPCOES_QDFL_RESERVA,
+                                "qgbt_tipo_disjuntor": OPCOES_QGBT_TIPO_DISJUNTOR,
+                                "qgbt_multimedidor": OPCOES_QGBT_MULTIMEDIDOR
                             }
                             
                             for campo, lista_opcoes in mapeamento.items():
@@ -314,9 +346,10 @@ st.markdown("<br>", unsafe_allow_html=True)
 col_form, col_summary = st.columns([1.3, 0.7], gap="large")
 
 with col_form:
+    # SEÇÃO 1: PARÂMETROS GERAIS
     st.markdown('''
     <div class="card-box">
-        <div class="card-header">📐 1. Parâmetros Elétricos & Operacionais</div>
+        <div class="card-header">📐 1. Parâmetros Elétricos & Operacionais Gerais</div>
     ''', unsafe_allow_html=True)
     
     c1, c2 = st.columns(2)
@@ -336,6 +369,43 @@ with col_form:
         
     st.markdown('</div>', unsafe_allow_html=True)
 
+    # SEÇÃO 2: PARÂMETROS ESPECÍFICOS POR TIPOLOGIA (DINÂMICOS)
+    if "CCM" in tipo_painel:
+        st.markdown('''
+        <div class="card-box">
+            <div class="card-header">⚙️ 2. Especificações Exclusivas de CCM</div>
+        ''', unsafe_allow_html=True)
+        c1, c2 = st.columns(2)
+        with c1:
+            ccm_extracao = st.selectbox("Tipo de Gaveta:", OPCOES_CCM_EXTRACAO, index=OPCOES_CCM_EXTRACAO.index(st.session_state["ccm_extracao"]))
+        with c2:
+            ccm_inversor = st.selectbox("Tipo de Partida Predominante:", OPCOES_CCM_INVERSOR, index=OPCOES_CCM_INVERSOR.index(st.session_state["ccm_inversor"]))
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    elif "QDFL" in tipo_painel:
+        st.markdown('''
+        <div class="card-box">
+            <div class="card-header">💡 2. Especificações Exclusivas de QDFL</div>
+        ''', unsafe_allow_html=True)
+        c1, c2 = st.columns(2)
+        with c1:
+            qdfl_disjuntor = st.selectbox("Padrão dos Disjuntores Módulos:", OPCOES_QDFL_DISJUNTOR, index=OPCOES_QDFL_DISJUNTOR.index(st.session_state["qdfl_disjuntor"]))
+        with c2:
+            qdfl_reserva = st.selectbox("Espaço de Reserva de Circuitos:", OPCOES_QDFL_RESERVA, index=OPCOES_QDFL_RESERVA.index(st.session_state["qdfl_reserva"]))
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    elif "QGBT" in tipo_painel:
+        st.markdown('''
+        <div class="card-box">
+            <div class="card-header">🏬 2. Especificações Exclusivas de QGBT</div>
+        ''', unsafe_allow_html=True)
+        c1, c2 = st.columns(2)
+        with c1:
+            qgbt_tipo_disjuntor = st.selectbox("Disjuntor Geral Entrada:", OPCOES_QGBT_TIPO_DISJUNTOR, index=OPCOES_QGBT_TIPO_DISJUNTOR.index(st.session_state["qgbt_tipo_disjuntor"]))
+        with c2:
+            qgbt_multimedidor = st.selectbox("Multimedidor de Grandezas:", OPCOES_QGBT_MULTIMEDIDOR, index=OPCOES_QGBT_MULTIMEDIDOR.index(st.session_state["qgbt_multimedidor"]))
+        st.markdown('</div>', unsafe_allow_html=True)
+
 # Coluna de Consolidação e Geração do RFI
 with col_summary:
     st.markdown(f'''
@@ -352,6 +422,7 @@ with col_summary:
     if btn_processar:
         pendencias = []
 
+        # Validação dos Gerais
         if tensao == "Não informado": pendencias.append("Qual a tensão de operação nominal do painel (V)?")
         if icc == "Não informado": pendencias.append("Qual a corrente suportável de curto-circuito (Icc em kA)?")
         if corrente_bus == "Não informado": pendencias.append("Qual a corrente nominal do barramento principal (A)?")
@@ -363,11 +434,22 @@ with col_summary:
         if entrada_saida_cabos == "Não informado": pendencias.append("Qual o sentido de entrada e saída dos cabos de força e comando?")
         if cor_pintura == "Não informado": pendencias.append("Qual a especificação da cor do acabamento da pintura?")
 
+        # Validação dos Específicos
+        if "CCM" in tipo_painel:
+            if st.session_state["ccm_extracao"] == "Não informado": pendencias.append("CCM: Qual o tipo de construtivo de gavetas (Extraíveis ou Fixas)?")
+            if st.session_state["ccm_inversor"] == "Não informado": pendencias.append("CCM: Qual o tipo de acionamento/partida principal solicitado?")
+        elif "QDFL" in tipo_painel:
+            if st.session_state["qdfl_disjuntor"] == "Não informado": pendencias.append("QDFL: Qual o padrão técnico dos disjuntores dos circuitos terminais?")
+            if st.session_state["qdfl_reserva"] == "Não informado": pendencias.append("QDFL: Qual a percentagem mínima de reserva necessária?")
+        elif "QGBT" in tipo_painel:
+            if st.session_state["qgbt_tipo_disjuntor"] == "Não informado": pendencias.append("QGBT: Qual o modelo do disjuntor de entrada principal (Aberto ou Caixa Moldada)?")
+            if st.session_state["qgbt_multimedidor"] == "Não informado": pendencias.append("QGBT: Qual o padrão e protocolo do multimedidor digital de energia?")
+
         st.markdown("<br>", unsafe_allow_html=True)
         if pendencias:
             st.markdown(f'''
             <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid #F59E0B; padding: 10px 14px; border-radius: 6px; font-size: 0.8rem; color: #FBBF24; font-family: 'JetBrains Mono', monospace; margin-bottom: 12px;">
-                ⚠️ {len(pendencias)} DUVIDA(S) TÉCNICA(S) DETECTADA(S)
+                ⚠️ {len(pendencias)} DÚVIDA(S) TÉCNICA(S) DETECTADA(S)
             </div>
             ''', unsafe_allow_html=True)
 
