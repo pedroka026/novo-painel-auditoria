@@ -167,7 +167,7 @@ st.markdown('''
         <div class="hero-title">⚡ COMMAND CENTER <span style="color: #64748B; font-weight: 400;">|</span> AUDITORIA RFI</div>
         <div class="hero-subtitle">MÓDULO DE VERIFICAÇÃO TÉCNICA E LEVANTAMENTO DE PENDÊNCIAS</div>
     </div>
-    <div class="kpi-badge">SYSTEM READY v2.5</div>
+    <div class="kpi-badge">SYSTEM READY v2.6</div>
 </div>
 ''', unsafe_allow_html=True)
 
@@ -273,92 +273,12 @@ init_state("tensao_nominal", opcoes_tensao[0])
 col_form, col_summary = st.columns([1.25, 0.75], gap="large")
 
 with col_form:
+    # --------------------------------------------------------------------------
+    # BLOCO 1: ANÁLISE DE DOCUMENTOS E EDITAL (NO TOPO)
+    # --------------------------------------------------------------------------
     st.markdown('''
     <div class="card-box">
-        <div class="card-header">📐 1. Parâmetros Construtivos & Elétricos Gerais</div>
-    ''', unsafe_allow_html=True)
-
-    c1, c2 = st.columns(2)
-    with c1:
-        icc = st.selectbox("Corrente Curto (Icc):", opcoes_icc, key="icc")
-        dps_classe = st.selectbox("Classe DPS:", opcoes_dps, key="dps_classe")
-        temp_ambiente = st.selectbox("Temp. Ambiente Máxima:", opcoes_temp, key="temp_ambiente")
-    with c2:
-        entrada_saida_cabos = st.selectbox("Acesso Cabos:", opcoes_acesso, key="entrada_saida_cabos")
-        altura_limite = st.selectbox("Limite Altura:", opcoes_altura, key="altura_limite")
-        profundidade_limite = st.selectbox("Limite Profundidade:", opcoes_profundidade, key="profundidade_limite")
-    
-    c_chap1, c_chap2 = st.columns(2)
-    with c_chap1:
-        largura_limite = st.selectbox("Limite Largura:", opcoes_largura, key="largura_limite")
-    with c_chap2:
-        chaparia = st.selectbox("Invólucro / Chaparia:", opcoes_chaparia, key="chaparia")
-        tensao_nominal = st.selectbox("Tensão Nominal:", opcoes_tensao, key="tensao_nominal")
-    
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    # BLOCO TÉCNICO ESPECÍFICO
-    if "CCM" in tipo_painel:
-        st.markdown('''
-        <div class="card-box">
-            <div class="card-header">⚙️ 2. Especificações do CCM (Automação e Cargas)</div>
-        ''', unsafe_allow_html=True)
-        
-        c1, c2 = st.columns(2)
-        with c1:
-            quantitativo_partidas = st.selectbox("Total Partidas:", ["Não informado", "1 a 5 partidas", "5 a 10 partidas", "10 a 20 partidas", "20 a 30 partidas", "Mais de 30 partidas"], key="quantitativo_partidas")
-            tipo_partida = st.selectbox("Partida Predominante:", ["Não informado", "Partida Direta", "Inversor de Frequência", "Soft-Starter", "Estrela-Triângulo", "Mista"], key="tipo_partida")
-            clp_es = st.selectbox("CLP / E/S Remota:", ["Não informado", "ControlLogix", "CompactLogix", "Flex I/O", "Point I/O", "Não terá"], key="clp_es")
-        with c2:
-            potencia_motores = st.selectbox("Potência Motores:", ["Não informado", "Definido no Texto de Observações"], key="potencia_motores")
-            categoria_seguranca = st.selectbox("Categoria NR-12:", ["Não informado", "Categoria 1", "Categoria 2", "Categoria 3", "Categoria 4", "Não se aplica"], key="categoria_seguranca")
-            quantitativo_io = st.selectbox("Volume I/O:", ["Não informado", "Informado"], key="quantitativo_io")
-            
-        modo_acionamento = st.selectbox("Modo Acionamento:", ["Não informado", "Local (Botoeiras na Porta)", "Remoto (Via CLP/Rede)", "Misto"], key="modo_acionamento")
-        topologia_rede = st.selectbox("Topologia da Rede:", ["Não informado", "Anel (DLR / MRP)", "Estrela", "Barramento", "Não terá"], key="topologia_rede")
-        protocolo_comunicacao = st.selectbox("Protocolo Comunicação:", ["Não informado", "EtherNet/IP", "PROFINET", "Modbus TCP", "Não terá"], key="protocolo_comunicacao")
-        
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    elif "QDFL" in tipo_painel:
-        st.markdown('''
-        <div class="card-box">
-            <div class="card-header">💡 2. Especificações do QDFL (Cargas de Iluminação e Tomadas)</div>
-        ''', unsafe_allow_html=True)
-        
-        c1, c2 = st.columns(2)
-        with c1:
-            qdfl_cargas = st.selectbox("Qtd de Circuitos:", ["Não informado", "1 a 10 circuitos", "10 a 20 circuitos", "20 a 40 circuitos", "Mais de 40 circuitos"], key="qdfl_cargas")
-            qdfl_corrente_disjuntores = st.selectbox("Corrente Disjuntores:", ["Não informado", "Especificado nas Observações / Tabela de Cargas"], key="qdfl_corrente_disjuntores")
-            qdfl_idr = st.selectbox("Aplicação de IDR (DR):", ["Não informado", "Sim (Geral)", "Sim (Apenas em Cargas Específicas)", "Não terá"], key="qdfl_idr")
-        with c2:
-            qdfl_idr_detalhe = st.selectbox("Cargas com IDR:", ["Não informado", "Detalhado nas Observações", "Todas as Iluminações/Tomadas"], key="qdfl_idr_detalhe")
-            qdfl_acionamento = st.selectbox("Acionamentos na Porta:", ["Não informado", "Chaves Comutadoras (Man-Off-Auto)", "Botoeiras de Iluminação", "Sem Acionamento na Porta (Apenas Disjuntores Internos)"], key="qdfl_acionamento")
-
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    elif "QGBT" in tipo_painel:
-        st.markdown('''
-        <div class="card-box">
-            <div class="card-header">🔌 2. Especificações do QGBT (Entradas e Barramentos)</div>
-        ''', unsafe_allow_html=True)
-        
-        c1, c2 = st.columns(2)
-        with c1:
-            qgbt_disjuntor_geral = st.selectbox("Disjuntor Geral:", ["Não informado", "Aberto (ACB) Extraível", "Aberto (ACB) Fixo", "Caixa Moldada (MCCB)", "Sem Disjuntor Geral (Apenas Chave Seccionadora)"], key="qgbt_disjuntor_geral")
-            qgbt_corrente_geral = st.selectbox("Corrente Nominal (In):", ["Não informado", "Até 800A", "1000A a 1600A", "2000A a 3200A", "Acima de 4000A"], key="qgbt_corrente_geral")
-            qgbt_barramento = st.selectbox("Tratamento Barramento:", ["Não informado", "Cobre Eletrolítico Nu", "Cobre Prateado", "Cobre Estanhado", "Pintado"], key="qgbt_barramento")
-        with c2:
-            qgbt_forma_separacao = st.selectbox("Forma Separação (IEC 61439):", ["Não informado", "Forma 1", "Forma 2b", "Forma 3b", "Forma 4b"], key="qgbt_forma_separacao")
-            qgbt_medicao = st.selectbox("Multimedidor de Porta:", ["Não informado", "Multimedidor Digital na Porta (com TC)", "Multimedidor com Comunicação Modbus/Ethernet", "Não terá"], key="qgbt_medicao")
-            qgbt_recomposição_fp = st.selectbox("Correção Fator de Potência:", ["Não informado", "Integrado ao QGBT (Automático)", "Painel Separado", "Não terá"], key="qgbt_recomposição_fp")
-
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    # BLOCO DE EDITAL E DOCUMENTOS ANEXOS
-    st.markdown('''
-    <div class="card-box">
-        <div class="card-header">📄 3. Análise de Documentos & Edital</div>
+        <div class="card-header">📄 1. Análise de Documentos & Edital</div>
     ''', unsafe_allow_html=True)
     
     anexos = st.file_uploader("Anexar Documentos / Especificações (PDF, DOCX, TXT):", type=["pdf", "docx", "txt"], accept_multiple_files=True)
@@ -388,7 +308,7 @@ with col_form:
                 Texto para Análise:
                 \"\"\"{texto_completo_para_ia[:8000]}\"\"\"
                 
-                Retorne EXATAMENTE e APENAS um objeto JSON válidos com as chaves a seguir, escolhendo exatamente uma das opções fornecidas entre colchetes para cada chave:
+                Retorne EXATAMENTE e APENAS um objeto JSON válido com as chaves a seguir, escolhendo exatamente uma das opções fornecidas entre colchetes para cada chave:
                 - "icc": {json.dumps(opcoes_icc)}
                 - "dps_classe": {json.dumps(opcoes_dps)}
                 - "temp_ambiente": {json.dumps(opcoes_temp)}
@@ -426,6 +346,93 @@ with col_form:
                         st.error(f"Erro ao consultar IA: HTTP {res.status_code}")
                 except Exception as e:
                     st.error(f"Falha ao realizar auto-preenchimento: {e}")
+
+    # --------------------------------------------------------------------------
+    # BLOCO 2: PARÂMETROS CONSTRUTIVOS & ELÉTRICOS GERAIS
+    # --------------------------------------------------------------------------
+    st.markdown('''
+    <div class="card-box">
+        <div class="card-header">📐 2. Parâmetros Construtivos & Elétricos Gerais</div>
+    ''', unsafe_allow_html=True)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        icc = st.selectbox("Corrente Curto (Icc):", opcoes_icc, key="icc")
+        dps_classe = st.selectbox("Classe DPS:", opcoes_dps, key="dps_classe")
+        temp_ambiente = st.selectbox("Temp. Ambiente Máxima:", opcoes_temp, key="temp_ambiente")
+    with c2:
+        entrada_saida_cabos = st.selectbox("Acesso Cabos:", opcoes_acesso, key="entrada_saida_cabos")
+        altura_limite = st.selectbox("Limite Altura:", opcoes_altura, key="altura_limite")
+        profundidade_limite = st.selectbox("Limite Profundidade:", opcoes_profundidade, key="profundidade_limite")
+    
+    c_chap1, c_chap2 = st.columns(2)
+    with c_chap1:
+        largura_limite = st.selectbox("Limite Largura:", opcoes_largura, key="largura_limite")
+    with c_chap2:
+        chaparia = st.selectbox("Invólucro / Chaparia:", opcoes_chaparia, key="chaparia")
+        tensao_nominal = st.selectbox("Tensão Nominal:", opcoes_tensao, key="tensao_nominal")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # --------------------------------------------------------------------------
+    # BLOCO 3: ESPECIFICAÇÕES TÉCNICAS ESPECÍFICAS
+    # --------------------------------------------------------------------------
+    if "CCM" in tipo_painel:
+        st.markdown('''
+        <div class="card-box">
+            <div class="card-header">⚙️ 3. Especificações do CCM (Automação e Cargas)</div>
+        ''', unsafe_allow_html=True)
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            quantitativo_partidas = st.selectbox("Total Partidas:", ["Não informado", "1 a 5 partidas", "5 a 10 partidas", "10 a 20 partidas", "20 a 30 partidas", "Mais de 30 partidas"], key="quantitativo_partidas")
+            tipo_partida = st.selectbox("Partida Predominante:", ["Não informado", "Partida Direta", "Inversor de Frequência", "Soft-Starter", "Estrela-Triângulo", "Mista"], key="tipo_partida")
+            clp_es = st.selectbox("CLP / E/S Remota:", ["Não informado", "ControlLogix", "CompactLogix", "Flex I/O", "Point I/O", "Não terá"], key="clp_es")
+        with c2:
+            potencia_motores = st.selectbox("Potência Motores:", ["Não informado", "Definido no Texto de Observações"], key="potencia_motores")
+            categoria_seguranca = st.selectbox("Categoria NR-12:", ["Não informado", "Categoria 1", "Categoria 2", "Categoria 3", "Categoria 4", "Não se aplica"], key="categoria_seguranca")
+            quantitativo_io = st.selectbox("Volume I/O:", ["Não informado", "Informado"], key="quantitativo_io")
+            
+        modo_acionamento = st.selectbox("Modo Acionamento:", ["Não informado", "Local (Botoeiras na Porta)", "Remoto (Via CLP/Rede)", "Misto"], key="modo_acionamento")
+        topologia_rede = st.selectbox("Topologia da Rede:", ["Não informado", "Anel (DLR / MRP)", "Estrela", "Barramento", "Não terá"], key="topologia_rede")
+        protocolo_comunicacao = st.selectbox("Protocolo Comunicação:", ["Não informado", "EtherNet/IP", "PROFINET", "Modbus TCP", "Não terá"], key="protocolo_comunicacao")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    elif "QDFL" in tipo_painel:
+        st.markdown('''
+        <div class="card-box">
+            <div class="card-header">💡 3. Especificações do QDFL (Cargas de Iluminação e Tomadas)</div>
+        ''', unsafe_allow_html=True)
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            qdfl_cargas = st.selectbox("Qtd de Circuitos:", ["Não informado", "1 a 10 circuitos", "10 a 20 circuitos", "20 a 40 circuitos", "Mais de 40 circuitos"], key="qdfl_cargas")
+            qdfl_corrente_disjuntores = st.selectbox("Corrente Disjuntores:", ["Não informado", "Especificado nas Observações / Tabela de Cargas"], key="qdfl_corrente_disjuntores")
+            qdfl_idr = st.selectbox("Aplicação de IDR (DR):", ["Não informado", "Sim (Geral)", "Sim (Apenas em Cargas Específicas)", "Não terá"], key="qdfl_idr")
+        with c2:
+            qdfl_idr_detalhe = st.selectbox("Cargas com IDR:", ["Não informado", "Detalhado nas Observações", "Todas as Iluminações/Tomadas"], key="qdfl_idr_detalhe")
+            qdfl_acionamento = st.selectbox("Acionamentos na Porta:", ["Não informado", "Chaves Comutadoras (Man-Off-Auto)", "Botoeiras de Iluminação", "Sem Acionamento na Porta (Apenas Disjuntores Internos)"], key="qdfl_acionamento")
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    elif "QGBT" in tipo_painel:
+        st.markdown('''
+        <div class="card-box">
+            <div class="card-header">🔌 3. Especificações do QGBT (Entradas e Barramentos)</div>
+        ''', unsafe_allow_html=True)
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            qgbt_disjuntor_geral = st.selectbox("Disjuntor Geral:", ["Não informado", "Aberto (ACB) Extraível", "Aberto (ACB) Fixo", "Caixa Moldada (MCCB)", "Sem Disjuntor Geral (Apenas Chave Seccionadora)"], key="qgbt_disjuntor_geral")
+            qgbt_corrente_geral = st.selectbox("Corrente Nominal (In):", ["Não informado", "Até 800A", "1000A a 1600A", "2000A a 3200A", "Acima de 4000A"], key="qgbt_corrente_geral")
+            qgbt_barramento = st.selectbox("Tratamento Barramento:", ["Não informado", "Cobre Eletrolítico Nu", "Cobre Prateado", "Cobre Estanhado", "Pintado"], key="qgbt_barramento")
+        with c2:
+            qgbt_forma_separacao = st.selectbox("Forma Separação (IEC 61439):", ["Não informado", "Forma 1", "Forma 2b", "Forma 3b", "Forma 4b"], key="qgbt_forma_separacao")
+            qgbt_medicao = st.selectbox("Multimedidor de Porta:", ["Não informado", "Multimedidor Digital na Porta (com TC)", "Multimedidor com Comunicação Modbus/Ethernet", "Não terá"], key="qgbt_medicao")
+            qgbt_recomposição_fp = st.selectbox("Correção Fator de Potência:", ["Não informado", "Integrado ao QGBT (Automático)", "Painel Separado", "Não terá"], key="qgbt_recomposição_fp")
+
+        st.markdown('</div>', unsafe_allow_html=True)
 
 # Coluna Lateral: Resumo das Pendências
 with col_summary:
