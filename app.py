@@ -171,12 +171,11 @@ else:
 modelo_selecionado = st.sidebar.selectbox(
     "Modelo em Execução:", 
     [
-        "llama-3.3-70b-versatile",
         "llama-3.1-8b-instant",
-        "mixtral-8x7b-32768"
+        "llama3-8b-8192",
+        "llama3-70b-8192"
     ]
 )
-
 # Dicionários de opções para o formulário
 OPCOES_ICC = ["Não informado", "10 kA", "15 kA", "20 kA", "25 kA", "30 kA", "45 kA", "65 kA"]
 OPCOES_DPS = ["Não informado", "Classe I", "Classe II", "Classe I + II", "Classe III", "Não terá"]
