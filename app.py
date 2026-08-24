@@ -209,7 +209,9 @@ opcoes_acesso = ["Não informado", "Por Baixo (Inferior)", "Por Cima (Superior)"
 
 # Sidebar - Configurações Técnicas
 st.sidebar.markdown("### ⚙️ MOTOR IA (GROQ)")
-api_key = st.sidebar.text_input("API Key:", type="password", help="Chave para análise semântica de edital")
+api_key = st.secrets.get("GROQ_API_KEY", "") if "GROQ_API_KEY" in st.secrets else ""
+if not api_key:
+    api_key = st.sidebar.text_input("API Key:", type="password", help="Chave para análise semântica de edital")
 
 modelos_disponiveis = []
 if api_key:
@@ -306,253 +308,40 @@ with col_form:
                 Analise o texto a seguir e extraia as configurações para o painel {tipo_painel}.
                 
                 Texto para Análise:
-                \"\"\"{texto_completo_para_ia[:8000]}\"\"\"
+                {texto_completo_para_ia[:6000]}
                 
-                Retorne EXATAMENTE e APENAS um objeto JSON válido com as chaves a seguir, escolhendo exatamente uma das opções fornecidas entre colchetes para cada chave:
-                - "icc": {json.dumps(opcoes_icc)}
-                - "dps_classe": {json.dumps(opcoes_dps)}
-                - "temp_ambiente": {json.dumps(opcoes_temp)}
-                - "entrada_saida_cabos": {json.dumps(opcoes_acesso)}
-                - "altura_limite": {json.dumps(opcoes_altura)}
-                - "profundidade_limite": {json.dumps(opcoes_profundidade)}
-                - "largura_limite": {json.dumps(opcoes_largura)}
-                - "chaparia": {json.dumps(opcoes_chaparia)}
-                - "tensao_nominal": {json.dumps(opcoes_tensao)}
+                Retorne APENAS um JSON válido (sem marcação markdown, sem ```json) com a seguinte estrutura e escolhendo estritamente uma das opções listadas:
+                {{
+                    "icc": "uma opção de {json.dumps(opcoes_icc)}",
+                    "dps_classe": "uma opção de {json.dumps(opcoes_dps)}",
+                    "temp_ambiente": "uma opção de {json.dumps(opcoes_temp)}",
+                    "entrada_saida_cabos": "uma opção de {json.dumps(opcoes_acesso)}",
+                    "altura_limite": "uma opção de {json.dumps(opcoes_altura)}",
+                    "profundidade_limite": "uma opção de {json.dumps(opcoes_profundidade)}",
+                    "largura_limite": "uma opção de {json.dumps(opcoes_largura)}",
+                    "chaparia": "uma opção de {json.dumps(opcoes_chaparia)}",
+                    "tensao_nominal": "uma opção de {json.dumps(opcoes_tensao)}"
+                }}
                 
-                Se a informação não estiver presente no texto, atribua obrigatoriamente "Não informado".
-                Responda APENAS o JSON.
+                Se a informação não estiver no texto, atribua "Não informado".
                 """
                 
                 try:
-                    res = requests.post(
-                        "https://api.groq.com/openai/v1/chat/completions",
-                        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                        json={
-                            "model": modelo_selecionado,
-                            "messages": [{"role": "user", "content": prompt_json}],
-                            "temperature": 0.0,
-                            "response_format": {"type": "json_object"}
-                        },
-                        timeout=15
-                    )
-                    if res.status_code == 200:
-                        dados_extraidos = json.loads(res.json()["choices"][0]["message"]["content"])
-                        for chave, valor in dados_extraidos.items():
-                            if chave in st.session_state:
-                                st.session_state[chave] = valor
-                        st.success("✅ Formulário atualizado com base nos documentos analisados!")
-                        st.rerun()
-                    else:
-                        st.error(f"Erro ao consultar IA: HTTP {res.status_code}")
-                except Exception as e:
-                    st.error(f"Falha ao realizar auto-preenchimento: {e}")
-
-    # --------------------------------------------------------------------------
-    # BLOCO 2: PARÂMETROS CONSTRUTIVOS & ELÉTRICOS GERAIS
-    # --------------------------------------------------------------------------
-    st.markdown('''
-    <div class="card-box">
-        <div class="card-header">📐 2. Parâmetros Construtivos & Elétricos Gerais</div>
-    ''', unsafe_allow_html=True)
-
-    c1, c2 = st.columns(2)
-    with c1:
-        icc = st.selectbox("Corrente Curto (Icc):", opcoes_icc, key="icc")
-        dps_classe = st.selectbox("Classe DPS:", opcoes_dps, key="dps_classe")
-        temp_ambiente = st.selectbox("Temp. Ambiente Máxima:", opcoes_temp, key="temp_ambiente")
-    with c2:
-        entrada_saida_cabos = st.selectbox("Acesso Cabos:", opcoes_acesso, key="entrada_saida_cabos")
-        altura_limite = st.selectbox("Limite Altura:", opcoes_altura, key="altura_limite")
-        profundidade_limite = st.selectbox("Limite Profundidade:", opcoes_profundidade, key="profundidade_limite")
-    
-    c_chap1, c_chap2 = st.columns(2)
-    with c_chap1:
-        largura_limite = st.selectbox("Limite Largura:", opcoes_largura, key="largura_limite")
-    with c_chap2:
-        chaparia = st.selectbox("Invólucro / Chaparia:", opcoes_chaparia, key="chaparia")
-        tensao_nominal = st.selectbox("Tensão Nominal:", opcoes_tensao, key="tensao_nominal")
-    
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    # --------------------------------------------------------------------------
-    # BLOCO 3: ESPECIFICAÇÕES TÉCNICAS ESPECÍFICAS
-    # --------------------------------------------------------------------------
-    if "CCM" in tipo_painel:
-        st.markdown('''
-        <div class="card-box">
-            <div class="card-header">⚙️ 3. Especificações do CCM (Automação e Cargas)</div>
-        ''', unsafe_allow_html=True)
-        
-        c1, c2 = st.columns(2)
-        with c1:
-            quantitativo_partidas = st.selectbox("Total Partidas:", ["Não informado", "1 a 5 partidas", "5 a 10 partidas", "10 a 20 partidas", "20 a 30 partidas", "Mais de 30 partidas"], key="quantitativo_partidas")
-            tipo_partida = st.selectbox("Partida Predominante:", ["Não informado", "Partida Direta", "Inversor de Frequência", "Soft-Starter", "Estrela-Triângulo", "Mista"], key="tipo_partida")
-            clp_es = st.selectbox("CLP / E/S Remota:", ["Não informado", "ControlLogix", "CompactLogix", "Flex I/O", "Point I/O", "Não terá"], key="clp_es")
-        with c2:
-            potencia_motores = st.selectbox("Potência Motores:", ["Não informado", "Definido no Texto de Observações"], key="potencia_motores")
-            categoria_seguranca = st.selectbox("Categoria NR-12:", ["Não informado", "Categoria 1", "Categoria 2", "Categoria 3", "Categoria 4", "Não se aplica"], key="categoria_seguranca")
-            quantitativo_io = st.selectbox("Volume I/O:", ["Não informado", "Informado"], key="quantitativo_io")
-            
-        modo_acionamento = st.selectbox("Modo Acionamento:", ["Não informado", "Local (Botoeiras na Porta)", "Remoto (Via CLP/Rede)", "Misto"], key="modo_acionamento")
-        topologia_rede = st.selectbox("Topologia da Rede:", ["Não informado", "Anel (DLR / MRP)", "Estrela", "Barramento", "Não terá"], key="topologia_rede")
-        protocolo_comunicacao = st.selectbox("Protocolo Comunicação:", ["Não informado", "EtherNet/IP", "PROFINET", "Modbus TCP", "Não terá"], key="protocolo_comunicacao")
-        
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    elif "QDFL" in tipo_painel:
-        st.markdown('''
-        <div class="card-box">
-            <div class="card-header">💡 3. Especificações do QDFL (Cargas de Iluminação e Tomadas)</div>
-        ''', unsafe_allow_html=True)
-        
-        c1, c2 = st.columns(2)
-        with c1:
-            qdfl_cargas = st.selectbox("Qtd de Circuitos:", ["Não informado", "1 a 10 circuitos", "10 a 20 circuitos", "20 a 40 circuitos", "Mais de 40 circuitos"], key="qdfl_cargas")
-            qdfl_corrente_disjuntores = st.selectbox("Corrente Disjuntores:", ["Não informado", "Especificado nas Observações / Tabela de Cargas"], key="qdfl_corrente_disjuntores")
-            qdfl_idr = st.selectbox("Aplicação de IDR (DR):", ["Não informado", "Sim (Geral)", "Sim (Apenas em Cargas Específicas)", "Não terá"], key="qdfl_idr")
-        with c2:
-            qdfl_idr_detalhe = st.selectbox("Cargas com IDR:", ["Não informado", "Detalhado nas Observações", "Todas as Iluminações/Tomadas"], key="qdfl_idr_detalhe")
-            qdfl_acionamento = st.selectbox("Acionamentos na Porta:", ["Não informado", "Chaves Comutadoras (Man-Off-Auto)", "Botoeiras de Iluminação", "Sem Acionamento na Porta (Apenas Disjuntores Internos)"], key="qdfl_acionamento")
-
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    elif "QGBT" in tipo_painel:
-        st.markdown('''
-        <div class="card-box">
-            <div class="card-header">🔌 3. Especificações do QGBT (Entradas e Barramentos)</div>
-        ''', unsafe_allow_html=True)
-        
-        c1, c2 = st.columns(2)
-        with c1:
-            qgbt_disjuntor_geral = st.selectbox("Disjuntor Geral:", ["Não informado", "Aberto (ACB) Extraível", "Aberto (ACB) Fixo", "Caixa Moldada (MCCB)", "Sem Disjuntor Geral (Apenas Chave Seccionadora)"], key="qgbt_disjuntor_geral")
-            qgbt_corrente_geral = st.selectbox("Corrente Nominal (In):", ["Não informado", "Até 800A", "1000A a 1600A", "2000A a 3200A", "Acima de 4000A"], key="qgbt_corrente_geral")
-            qgbt_barramento = st.selectbox("Tratamento Barramento:", ["Não informado", "Cobre Eletrolítico Nu", "Cobre Prateado", "Cobre Estanhado", "Pintado"], key="qgbt_barramento")
-        with c2:
-            qgbt_forma_separacao = st.selectbox("Forma Separação (IEC 61439):", ["Não informado", "Forma 1", "Forma 2b", "Forma 3b", "Forma 4b"], key="qgbt_forma_separacao")
-            qgbt_medicao = st.selectbox("Multimedidor de Porta:", ["Não informado", "Multimedidor Digital na Porta (com TC)", "Multimedidor com Comunicação Modbus/Ethernet", "Não terá"], key="qgbt_medicao")
-            qgbt_recomposição_fp = st.selectbox("Correção Fator de Potência:", ["Não informado", "Integrado ao QGBT (Automático)", "Painel Separado", "Não terá"], key="qgbt_recomposição_fp")
-
-        st.markdown('</div>', unsafe_allow_html=True)
-
-# Coluna Lateral: Resumo das Pendências
-with col_summary:
-    st.markdown(f'''
-    <div style="position: sticky; top: 20px;">
-        <div style="background: #111827; border: 1px solid #1F2937; border-radius: 10px; padding: 20px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                <span style="font-size: 0.9rem; font-weight: 700; color: #F3F4F6;">PAINEL DE CONSOLIDAÇÃO</span>
-                <span style="background: #0284C7; color: #FFF; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 600;">{tipo_painel.split(' ')[0]}</span>
-            </div>
-    ''', unsafe_allow_html=True)
-
-    btn_processar = st.button("RUN AUDIT / GERAR RFI ➔")
-
-    if btn_processar:
-        pendencias = []
-
-        # PENDÊNCIAS GERAIS
-        if st.session_state.get("icc") == "Não informado": pendencias.append("Qual é a corrente de curto-circuito (Icc em kA) no ponto de instalação?")
-        if st.session_state.get("dps_classe") == "Não informado": pendencias.append("Qual é a classe de proteção do DPS exigida?")
-        if st.session_state.get("temp_ambiente") == "Não informado": pendencias.append("Qual é a temperatura ambiente máxima no local?")
-        if st.session_state.get("entrada_saida_cabos") == "Não informado": pendencias.append("Qual a direção de entrada e saída dos cabos (superior ou inferior)?")
-        if st.session_state.get("altura_limite") == "Não informado": pendencias.append("Qual é o limite de altura disponível para o painel?")
-        if st.session_state.get("profundidade_limite") == "Não informado": pendencias.append("Qual é o limite de profundidade disponível para o painel?")
-        if st.session_state.get("largura_limite") == "Não informado": pendencias.append("Qual é o limite de largura disponível para o painel?")
-        if st.session_state.get("chaparia") == "Não informado": pendencias.append("Qual é o padrão de invólucro / chaparia exigido para o painel?")
-        if st.session_state.get("tensao_nominal") == "Não informado": pendencias.append("Qual é a tensão nominal e frequência da rede de alimentação?")
-
-        # PENDÊNCIAS ESPECÍFICAS
-        if "CCM" in tipo_painel:
-            if st.session_state.get("quantitativo_partidas") == "Não informado": pendencias.append("Qual é o quantitativo total de partidas do CCM?")
-            if st.session_state.get("tipo_partida") == "Não informado": pendencias.append("Qual é o tipo de partida exigido para os motores?")
-            if st.session_state.get("potencia_motores") == "Não informado": pendencias.append("Qual é a potência (kW/cv) e corrente nominal de cada motor?")
-            if st.session_state.get("categoria_seguranca") == "Não informado": pendencias.append("Qual a Categoria de Segurança (CAT) exigida pela NR-12?")
-            if st.session_state.get("modo_acionamento") == "Não informado": pendencias.append("Como será o acionamento dos motores (Local, Remoto ou Misto)?")
-            if st.session_state.get("clp_es") == "Não informado": pendencias.append("Qual é o modelo do CLP ou E/S Remota exigido?")
-            if st.session_state.get("quantitativo_io") == "Não informado": pendencias.append("Qual é o quantitativo total de I/O's (entradas e saídas)?")
-            if st.session_state.get("topologia_rede") == "Não informado": pendencias.append("Qual é a topologia da rede de comunicação exigida?")
-            if st.session_state.get("protocolo_comunicacao") == "Não informado": pendencias.append("Qual protocolo de comunicação industrial deve ser utilizado?")
-
-        elif "QDFL" in tipo_painel:
-            if st.session_state.get("qdfl_cargas") == "Não informado": pendencias.append("Qual é a quantidade exata de cargas/circuitos do QDFL?")
-            if st.session_state.get("qdfl_corrente_disjuntores") == "Não informado": pendencias.append("Qual a corrente nominal de projeto para cada disjuntor de saída?")
-            if st.session_state.get("qdfl_idr") == "Não informado": pendencias.append("Será necessária a aplicação de proteção residual IDR (DR)?")
-            if st.session_state.get("qdfl_idr") == "Sim (Apenas em Cargas Específicas)" and st.session_state.get("qdfl_idr_detalhe") == "Não informado":
-                pendencias.append("Em quais saídas/cargas específicas é obrigatória a utilização do IDR?")
-            if st.session_state.get("qdfl_acionamento") == "Não informado": pendencias.append("Haverá comandos na porta (comutadoras/botoeiras) ou apenas operação interna dos disjuntores?")
-
-        elif "QGBT" in tipo_painel:
-            if st.session_state.get("qgbt_disjuntor_geral") == "Não informado": pendencias.append("Qual o tipo do disjuntor geral de entrada (ACB Fixo/Extraível ou Caixa Moldada)?")
-            if st.session_state.get("qgbt_corrente_geral") == "Não informado": pendencias.append("Qual a corrente nominal geral (In em Amperes) do QGBT?")
-            if st.session_state.get("qgbt_barramento") == "Não informado": pendencias.append("Qual é o tipo de tratamento do barramento de fase/neutro (Nu, Estanhado, Prateado)?")
-            if st.session_state.get("qgbt_forma_separacao") == "Não informado": pendencias.append("Qual a Forma de Separação Interna (NBR IEC 61439) exigida para o QGBT (Ex: 2b, 3b, 4b)?")
-            if st.session_state.get("qgbt_medicao") == "Não informado": pendencias.append("Qual o modelo de multimedidor de grandezas elétricas necessário na porta?")
-            if st.session_state.get("qgbt_recomposição_fp") == "Não informado": pendencias.append("O QGBT deverá possuir banco de capacitores automático integrado?")
-
-        # EXTRAÇÃO IA DE TEXTO E ARQUIVOS
-        duvidas_extras = []
-        texto_anexos_geral = extrair_texto_arquivos(anexos) if anexos else ""
-        texto_consolidado = (obs_adicionais + "\n" + texto_anexos_geral).strip()
-
-        if texto_consolidado and api_key:
-            system_prompt = (
-                f"Você é um engenheiro orçamentista de painéis elétricos no Brasil especializado em {tipo_painel}. "
-                "Leia o texto fornecido pelo usuário e crie perguntas técnicas claras em Português do Brasil sobre pontos não esclarecidos. "
-                "PROIBIDO USAR INGLÊS OU EXIBIR RACIOCÍNIO INTERNO. "
-                "Responda APENAS em tópicos com perguntas diretas iniciando por 'Qual', 'Quais', 'Há' ou 'É'."
-            )
-            try:
-                res = requests.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                    json={
+                    payload = {
                         "model": modelo_selecionado,
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": texto_consolidado[:6000]}
-                        ],
-                        "temperature": 0.0
-                    },
-                    timeout=10
-                )
-                if res.status_code == 200:
-                    texto_ia = res.json()["choices"][0]["message"]["content"]
-                    padrao_ptbr = re.compile(r'^\s*[\*\-]?\s*(Qual|Quais|Como|Há|É|Existe|Deve)\b.*\?$', re.IGNORECASE)
-                    for linha in texto_ia.split('\n'):
-                        linha_limpa = linha.strip()
-                        if padrao_ptbr.match(linha_limpa):
-                            pergunta_formatada = re.sub(r'^[\*\-\d\.\s]+', '', linha_limpa)
-                            duvidas_extras.append(pergunta_formatada)
-            except Exception as e:
-                st.error(f"Erro no processamento LLM: {e}")
-
-        todas_duvidas = list(dict.fromkeys(pendencias + duvidas_extras))
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        if todas_duvidas:
-            st.markdown(f'''
-            <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid #F59E0B; padding: 10px 14px; border-radius: 6px; font-size: 0.8rem; color: #FBBF24; font-family: 'JetBrains Mono', monospace; margin-bottom: 12px;">
-                ⚠️ {len(todas_duvidas)} PENDÊNCIA(S) DETECTADA(S)
-            </div>
-            ''', unsafe_allow_html=True)
-
-            texto_relatorio = f"RFI - LEVANTAMENTO DE DÚVIDAS TÉCNICAS ({tipo_painel.split(' ')[0]})\n\n"
-            for idx, d in enumerate(todas_duvidas, 1):
-                st.markdown(f'<div class="pending-item"><b>{idx}.</b> {d}</div>', unsafe_allow_html=True)
-                texto_relatorio += f"{idx}. {d}\n"
-
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.download_button(
-                label="📥 EXPORTAR RELATÓRIO (.TXT)",
-                data=texto_relatorio,
-                file_name=f"rfi_duvidas_{tipo_painel.split(' ')[0].lower()}.txt",
-                mime="text/plain"
-            )
-        else:
-            st.markdown('''
-            <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10B981; padding: 12px; border-radius: 6px; font-size: 0.85rem; color: #34D399; text-align: center;">
-                ✓ NENHUMA PENDÊNCIA ENCONTRADA
-            </div>
-            ''', unsafe_allow_html=True)
-
-    st.markdown('</div></div>', unsafe_allow_html=True)
+                        "messages": [{"role": "user", "content": prompt_json}],
+                        "temperature": 0.1
+                    }
+                    
+                    res = requests.post(
+                        "[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)",
+                        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                        json=payload,
+                        timeout=20
+                    )
+                    
+                    if res.status_code == 200:
+                        conteudo_resposta = res.json()["choices"][0]["message"]["content"]
+                        
+                        # Limpa marcações markdown
+                        conteudo_limpo = re.sub(r'
